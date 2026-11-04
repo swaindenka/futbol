@@ -2,15 +2,11 @@
 
 const KEY = 'futbol-arena-prefs-v1';
 
-const finePointer = typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches;
-
 export const DEFAULT_PREFS = {
   name: '',
   number: 10,
   volume: 0.7,
   muted: false,
-  aim: finePointer ? 'mouse' : 'keys',
-  aimGuide: true,
   camera: 'auto',
   tilt: 0.74,
   quality: 'high',

@@ -259,7 +259,7 @@ export class Match {
     const out = [];
     for (const st of this.stats.players.values()) {
       if (!findPlayer(this.state, st.id)) continue;
-      out.push([st.id, st.goals, st.assists, st.shots, st.tackles]);
+      out.push([st.id, st.goals, st.assists, st.shots]);
     }
     return out;
   }

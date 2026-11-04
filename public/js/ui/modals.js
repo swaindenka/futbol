@@ -13,16 +13,13 @@ export function statsTablesHtml(players, kits, myId, { rating = true } = {}) {
       <tr class="${p.id === myId ? 'me' : ''}">
         <td><span class="pn">${esc(p.name)}${p.bot ? ' <em>bot</em>' : ''}</span></td>
         <td>${p.goals}</td><td>${p.assists}</td><td>${p.shots}</td>
-        ${p.passes !== undefined ? `<td>${p.passesOk}/${p.passes}</td>` : ''}
-        <td>${p.tackles}</td>
         ${rating && p.rating !== undefined ? `<td><span class="rating ${p.rating >= 8 ? 'hi' : ''}">${p.rating.toFixed(1)}</span></td>` : ''}
       </tr>`).join('');
-    const hasPass = rows.some((p) => p.passes !== undefined);
     return `
       <div class="stats-team">
         <h4><i style="--k:${kits[t].primary}"></i>${esc(kits[t].name)}</h4>
         <table class="stats">
-          <thead><tr><th>Oyuncu</th><th title="Gol">G</th><th title="Asist">A</th><th title="Şut">Şut</th>${hasPass ? '<th title="İsabetli / toplam pas">Pas</th>' : ''}<th title="Top kapma">TK</th>${rating && rows.some((p) => p.rating !== undefined) ? '<th>Puan</th>' : ''}</tr></thead>
+          <thead><tr><th>Oyuncu</th><th title="Gol">G</th><th title="Asist">A</th><th title="Şut">Şut</th>${rating && rows.some((p) => p.rating !== undefined) ? '<th>Puan</th>' : ''}</tr></thead>
           <tbody>${body || '<tr><td colspan="7" class="muted">—</td></tr>'}</tbody>
         </table>
       </div>`;
@@ -109,8 +106,6 @@ export class Modals {
       body: el('div', { class: 'menu-list' },
         row('Ses düzeyi', vol),
         el('div', { class: 'toggle-row' }, el('span', { text: 'Sesi kapat' }), toggle(p.muted, (v) => app.setMuted(v))),
-        row('Nişan alma', seg([{ v: 'mouse', label: '🖱 Fare ile' }, { v: 'keys', label: '⌨ Yön tuşlarıyla' }], p.aim, (v) => app.setPref('aim', v))),
-        el('div', { class: 'toggle-row' }, el('span', { text: 'Şut / aşırtma yörünge çizgisi (bilardo kılavuzu)' }), toggle(p.aimGuide, (v) => app.setPref('aimGuide', v))),
         row('Kamera', seg([{ v: 'auto', label: 'Otomatik' }, { v: 'full', label: 'Tüm saha' }, { v: 'follow', label: 'Takip' }], p.camera, (v) => app.setPref('camera', v))),
         row('Kamera açısı (sol: eğik · sağ: tam üstten)', tilt),
         row('Grafik kalitesi', seg([{ v: 'high', label: 'Yüksek' }, { v: 'medium', label: 'Orta' }, { v: 'low', label: 'Düşük' }], p.quality, (v) => app.setPref('quality', v))),
@@ -129,14 +124,11 @@ export class Modals {
       body: `
         <div class="help-grid">
           <div class="help-section">
-            <h3>Klavye + Fare</h3>
+            <h3>Oynanış</h3>
             ${item('Hareket', `${k('W', 'A', 'S', 'D')} veya ${k('↑', '←', '↓', '→')}`)}
-            ${item('Depar (dayanıklılık harcar)', k('Shift'))}
-            ${item('Şut — basılı tut, bırak', `${k('Space')} ${k('X')} ${k('Sol tık')}`)}
-            ${item('Pas (en uygun takım arkadaşına)', `${k('E')} ${k('C')}`)}
-            ${item('Aşırtma / havadan', `${k('R')} ${k('V')} ${k('Sağ tık')}`)}
-            ${item('Kayarak müdahale', `${k('Q')} ${k('Z')}`)}
-            ${item('Nişan', 'Fare imleci (ayarlardan değişir)')}
+            ${item('Vur', `${k('Space')} ${k('X')} ${k('Shift')} veya tık`)}
+            ${item('Mobil', 'Sol tarafta joystick, sağda VUR')}
+            ${item('Gamepad', 'Sol çubuk ile koş, herhangi bir tuş ile vur')}
           </div>
           <div class="help-section">
             <h3>Diğer</h3>
@@ -146,18 +138,15 @@ export class Modals {
             ${item('Kamera modu', k('F'))}
             ${item('Ses aç/kapat', k('M'))}
             ${item('Menü', k('Esc'))}
-            ${item('Gamepad', 'Sol çubuk, A şut, X pas, Y aşırt, B kay, LB depar')}
           </div>
         </div>
         <div class="help-section">
           <h3>İpuçları</h3>
           <ul class="tips">
-            <li><b>Şut gücü:</b> tuşa ne kadar uzun basarsan o kadar sert vurursun; halka yeşilden kırmızıya dolar. Kısa dokunuş topu hafifçe iter.</li>
-            <li><b>Falso:</b> şut çekerken yana doğru koşuyorsan top kavis alır. Bilardo kılavuzu yörüngeyi ve banttan sekmeleri gösterir.</li>
-            <li><b>Aşırtma:</b> top oyuncuların ve kalecinin üzerinden geçebilir; mavi hedef halkası topun düşeceği yeri gösterir.</li>
-            <li><b>Kayarak müdahale:</b> topa sahip rakibe kayarsan topu kaparsın; topsuz oyuncuya kayarsan <b>faul</b> olur ve sen yere düşersin.</li>
-            <li><b>Saha kenarları banttır:</b> top duvarlardan seker — bilardodaki gibi banttan gol atabilirsin!</li>
-            <li>Kontrol ettiğin topla depar atarsan biraz yavaşlarsın; boşta depar ise dayanıklılık barını tüketir.</li>
+            <li><b>Topa koşarak çarparsan</b> top önünde ilerler, böylece topu sürersin.</li>
+            <li><b>Vur tuşu</b> topu senden uzağa, gövdenin baktığı değil topun bulunduğu yöne doğru sertçe gönderir. Nişan almak için topun arkasına geç.</li>
+            <li>Tuşa basılıyken etrafında beyaz bir halka çıkar; top değdiği anda vuruş olur.</li>
+            <li><b>Kenarlar banttır:</b> top duvarlardan seker, banttan gol atabilirsin.</li>
           </ul>
         </div>`,
     });
@@ -225,7 +214,7 @@ export class Modals {
             <div class="poss-labels"><span>%${result.possession[0]}</span><span>Topa sahip olma</span><span>%${result.possession[1]}</span></div>
           </div>
         </div>
-        ${mvp ? `<div class="mvp"><span class="mvp-badge">MVP</span><div><div class="mvp-name">${esc(mvp.name)}</div><div class="mvp-sub">${esc(kits[mvp.team].name)} · ${mvp.goals} gol · ${mvp.assists} asist · ${mvp.tackles} top kapma</div></div><div class="mvp-rating">${mvp.rating.toFixed(1)}</div></div>` : ''}
+        ${mvp ? `<div class="mvp"><span class="mvp-badge">MVP</span><div><div class="mvp-name">${esc(mvp.name)}</div><div class="mvp-sub">${esc(kits[mvp.team].name)} · ${mvp.goals} gol · ${mvp.assists} asist · ${mvp.shots} şut</div></div><div class="mvp-rating">${mvp.rating.toFixed(1)}</div></div>` : ''}
         ${statsTablesHtml(result.players, kits, myId)}`,
     });
     const foot = [];

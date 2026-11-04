@@ -7,11 +7,6 @@ import { P, B, PHASE } from '../../shared/constants.js';
 const TAU = Math.PI * 2;
 const LIME = '#b6ff3b';
 
-function chargeColor(c, lob) {
-  if (lob) return `hsl(${190 + c * 90}, 95%, ${60 + c * 8}%)`;
-  return `hsl(${120 - c * 120}, 95%, ${55 + c * 5}%)`;
-}
-
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -118,7 +113,6 @@ export class Renderer {
     this.drawGoal(f, 1, 'front', fx);
     this.drawRails(f, fx, 'near');
     this.drawParticles(fx);
-    this.drawAimArc(view);
     if (opts.showNames !== false) this.drawLabels(view);
     this.drawBallIndicator(view);
     this.drawScreenFx(fx, view, opts);
@@ -197,46 +191,11 @@ export class Renderer {
         ctx.stroke();
       }
       if (p.ct) {
-        const c = p.charge;
-        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-        ctx.lineWidth = 5;
+        // Kick armed: bright ring like a striker's boot ready.
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, P.R + 10, 0, TAU);
-        ctx.stroke();
-        ctx.strokeStyle = chargeColor(c, p.ct === 2);
-        ctx.lineWidth = 4.5;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, P.R + 10, -Math.PI / 2, -Math.PI / 2 + Math.max(0.05, c) * TAU);
-        ctx.stroke();
-      }
-    }
-
-    // Aim guide on the ground (shots) / landing marker (lobs)
-    const aim = view.aim;
-    if (aim && aim.pts.length) {
-      if (aim.ct === 1) {
-        const n = aim.pts.length;
-        for (let i = 0; i < n; i++) {
-          const pt = aim.pts[i];
-          const t = i / n;
-          ctx.fillStyle = `rgba(255,255,255,${0.9 * (1 - t * 0.85)})`;
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, 3.4 * (1 - t * 0.55), 0, TAU);
-          ctx.fill();
-        }
-      }
-      if (aim.landing) {
-        const pulse = 1 + Math.sin(this.time * 8) * 0.12;
-        ctx.strokeStyle = 'rgba(120,220,255,0.85)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(aim.landing.x, aim.landing.y, 12 * pulse, 0, TAU);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(aim.landing.x - 6, aim.landing.y);
-        ctx.lineTo(aim.landing.x + 6, aim.landing.y);
-        ctx.moveTo(aim.landing.x, aim.landing.y - 6);
-        ctx.lineTo(aim.landing.x, aim.landing.y + 6);
+        ctx.arc(p.x, p.y, P.R + 5, 0, TAU);
         ctx.stroke();
       }
     }
@@ -483,11 +442,9 @@ export class Renderer {
     const ryt = ry * s;
     if (gx < -60 || gx > this.W + 60 || gy < -80 || gy > this.H + 60) return;
 
-    if (p.stun) ctx.globalAlpha = 0.82;
-
     // Motion ghosts while sliding / sprinting fast
     const sp = Math.hypot(p.vx, p.vy);
-    if (p.slide || sp > 5) {
+    if (sp > 5) {
       for (let i = 1; i <= 2; i++) {
         const [hx, hy] = cam.project(p.x - p.vx * i * 2.2, p.y - p.vy * i * 2.2, TOKEN_H * 0.5);
         ctx.fillStyle = rgba(kit.primary, 0.16 / i);
@@ -717,23 +674,6 @@ export class Renderer {
     ctx.fill();
   }
 
-  drawAimArc(view) {
-    const aim = view.aim;
-    if (!aim || aim.ct !== 2 || aim.pts.length < 2) return;
-    const { ctx, cam } = this;
-    ctx.setLineDash([5, 6]);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(140,225,255,0.85)';
-    ctx.beginPath();
-    aim.pts.forEach((pt, i) => {
-      const [x, y] = cam.project(pt.x, pt.y, pt.z + B.R);
-      if (i) ctx.lineTo(x, y);
-      else ctx.moveTo(x, y);
-    });
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
   labelWidth(text, font) {
     const key = `${font}|${text}`;
     let w = this.labelCache.get(key);
@@ -757,15 +697,6 @@ export class Renderer {
       const ryt = P.R * cam.zoom * cam.tilt * s;
       const rxt = P.R * cam.zoom * s;
       let y = ty - ryt - 12;
-
-      if (p.stun) {
-        ctx.fillStyle = '#ffe14d';
-        for (let i = 0; i < 3; i++) {
-          const a = this.time * 5 + (i * TAU) / 3;
-          this.star(tx + Math.cos(a) * rxt * 0.8, ty - ryt - 4 + Math.sin(a) * ryt * 0.4, 4, a);
-        }
-        y -= 6;
-      }
 
       const name = p.name || '';
       const w = this.labelWidth(name, font) + 14;
@@ -792,20 +723,6 @@ export class Renderer {
         ctx.lineTo(tx, y - 10 + bob);
         ctx.closePath();
         ctx.fill();
-        // Stamina bar under the token
-        if (p.stamina < 0.995 || p.sprint) {
-          const bw = 34;
-          const by = gy + P.R * cam.zoom * cam.tilt + 7;
-          ctx.fillStyle = 'rgba(0,0,0,0.5)';
-          ctx.beginPath();
-          ctx.roundRect(gx - bw / 2 - 1, by - 1, bw + 2, 5, 3);
-          ctx.fill();
-          const col = p.exh ? (Math.floor(this.time * 6) % 2 ? '#ff4757' : '#a3172a') : p.stamina < 0.3 ? '#ffa62b' : LIME;
-          ctx.fillStyle = col;
-          ctx.beginPath();
-          ctx.roundRect(gx - bw / 2, by, Math.max(2, bw * p.stamina), 3, 2);
-          ctx.fill();
-        }
       }
 
       if (p.emote) {

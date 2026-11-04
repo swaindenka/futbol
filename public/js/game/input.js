@@ -7,11 +7,7 @@ const KEYS = {
   down: ['KeyS', 'ArrowDown'],
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
-  sprint: ['ShiftLeft', 'ShiftRight'],
-  shoot: ['Space', 'KeyX'],
-  pass: ['KeyE', 'KeyC'],
-  lob: ['KeyR', 'KeyV'],
-  tackle: ['KeyQ', 'KeyZ'],
+  kick: ['Space', 'KeyX', 'ShiftLeft', 'ShiftRight', 'KeyK'],
 };
 const GAME_CODES = new Set(Object.values(KEYS).flat());
 
@@ -42,8 +38,6 @@ export class Input {
     this.keys = new Set();
     this.mouse = { x: 0, y: 0, moved: false, left: false, right: false };
     this.enabled = false; // only while a match is shown
-    this.aimMode = 'mouse';
-    this.lastMove = { x: 1, y: 0, set: false };
     this.touch = null;
     this.onAction = null;
     this.gamepadActive = false;
@@ -116,20 +110,14 @@ export class Input {
       const out = {
         mx: dz(gp.axes[0] || 0),
         my: dz(gp.axes[1] || 0),
-        ax: dz(gp.axes[2] || 0),
-        ay: dz(gp.axes[3] || 0),
         b: 0,
       };
-      if (btn(0) || btn(7)) out.b |= BTN.SHOOT;
-      if (btn(2) || btn(5)) out.b |= BTN.PASS;
-      if (btn(3)) out.b |= BTN.LOB;
-      if (btn(1)) out.b |= BTN.TACKLE;
-      if (btn(4) || btn(6)) out.b |= BTN.SPRINT;
+      for (let i = 0; i <= 7; i++) if (btn(i)) out.b |= BTN.KICK;
       if (btn(12)) out.my = -1;
       if (btn(13)) out.my = 1;
       if (btn(14)) out.mx = -1;
       if (btn(15)) out.mx = 1;
-      const any = out.mx || out.my || out.ax || out.ay || out.b;
+      const any = out.mx || out.my || out.b;
       if (any) this.gamepadActive = true;
       return out;
     }
@@ -138,24 +126,17 @@ export class Input {
 
   /**
    * @param {{x:number,y:number,facing:number}|null} me rendered position of the local player
-   * @param {import('./camera.js').Camera} cam
    */
-  sample(me, cam) {
+  sample(me) {
     const out = { mx: 0, my: 0, a: me ? me.facing : 0, b: 0 };
     if (!this.enabled) return out;
 
     let mx = (this.down('right') ? 1 : 0) - (this.down('left') ? 1 : 0);
     let my = (this.down('down') ? 1 : 0) - (this.down('up') ? 1 : 0);
     let b = 0;
-    if (this.down('sprint')) b |= BTN.SPRINT;
-    if (this.down('shoot')) b |= BTN.SHOOT;
-    if (this.down('pass')) b |= BTN.PASS;
-    if (this.down('lob')) b |= BTN.LOB;
-    if (this.down('tackle')) b |= BTN.TACKLE;
-    if (this.mouse.left) b |= BTN.SHOOT;
-    if (this.mouse.right) b |= BTN.LOB;
+    if (this.down('kick')) b |= BTN.KICK;
+    if (this.mouse.left || this.mouse.right) b |= BTN.KICK;
 
-    let aim = null;
     const gp = this.readGamepad();
     if (gp) {
       if (gp.mx || gp.my) {
@@ -163,7 +144,6 @@ export class Input {
         my = gp.my;
       }
       b |= gp.b;
-      if (gp.ax || gp.ay) aim = Math.atan2(gp.ay, gp.ax);
     }
     if (this.touch && this.touch.active) {
       const t = this.touch.state;
@@ -178,21 +158,8 @@ export class Input {
       mx /= len;
       my /= len;
     }
-    if (len > 0.15) {
-      this.lastMove.x = mx;
-      this.lastMove.y = my;
-      this.lastMove.set = true;
-    }
-
-    if (aim === null && this.aimMode === 'mouse' && this.mouse.moved && me && !(this.touch && this.touch.active)) {
-      const w = cam.unproject(this.mouse.x, this.mouse.y);
-      aim = Math.atan2(w.y - me.y, w.x - me.x);
-    }
-    if (aim === null) {
-      if (len > 0.15) aim = Math.atan2(my, mx);
-      else if (me) aim = me.facing;
-      else aim = 0;
-    }
+    // The kick direction comes from body position, so `a` only reports where we face.
+    const aim = len > 0.15 ? Math.atan2(my, mx) : me ? me.facing : 0;
     out.mx = Math.round(mx * 100) / 100;
     out.my = Math.round(my * 100) / 100;
     out.a = Math.round(aim * 1000) / 1000;

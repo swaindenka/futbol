@@ -26,7 +26,6 @@ class App {
     this.audio.muted = this.prefs.muted;
     document.body.classList.toggle('muted', this.prefs.muted);
     this.input = new Input(this.canvas);
-    this.input.aimMode = this.prefs.aim;
     this.input.onAction = (a, e) => this.onAction(a, e);
     this.touch = isTouchDevice() ? new TouchControls($('#touch')) : null;
     this.input.touch = this.touch;
@@ -85,7 +84,6 @@ class App {
     this.prefs[key] = value;
     this.savePrefs();
     if (key === 'volume') this.audio.setVolume(value);
-    if (key === 'aim') this.input.aimMode = value;
     if ((key === 'touchAlpha' || key === 'touchSize') && this.touch) this.touch.setLook(this.prefs.touchAlpha, this.prefs.touchSize);
     if (key === 'quality') {
       this.renderer.setQuality(value);
@@ -213,8 +211,8 @@ class App {
     this.savePrefs();
     const touch = this.touch && matchMedia('(pointer: coarse)').matches;
     this.hud.hints(touch
-      ? ['Sol tarafta parmağınla yönlendir, <b>ŞUT</b> tuşunu basılı tutup bırak.', '<b>PAS</b> en yakın takım arkadaşına gider, <b>AŞIRT</b> topu havalandırır.', '<b>KAY</b> ile topu kap — ama topsuz oyuncuya kayarsan faul!']
-      : ['<kbd>Space</kbd> veya <kbd>Sol tık</kbd> basılı tut → şut gücünü doldur, bırak → vur!', '<kbd>E</kbd> pas · <kbd>R</kbd> / <kbd>Sağ tık</kbd> aşırtma · <kbd>Shift</kbd> depar', '<kbd>Q</kbd> kayarak müdahale — topsuz oyuncuya kayarsan faul! · <kbd>H</kbd> tüm kontroller']);
+      ? ['Sol tarafta parmağınla koş, topa çarparak sür.', 'Topun arkasına geç ve <b>VUR</b> tuşuna bas!']
+      : ['<kbd>W A S D</kbd> veya ok tuşlarıyla koş, topa çarparak sür.', 'Topun arkasına geç ve <kbd>Space</kbd> ile vur!']);
   }
 
   backHome() {
@@ -324,7 +322,7 @@ class App {
       this.roomUI.updatePings(m.p);
       if (m.st) {
         this.liveStats.clear();
-        for (const [id, goals, assists, shots, tackles] of m.st) this.liveStats.set(id, { goals, assists, shots, tackles });
+        for (const [id, goals, assists, shots] of m.st) this.liveStats.set(id, { goals, assists, shots });
       }
     });
     net.on('chat', (m) => {
@@ -451,7 +449,7 @@ class App {
     if (s.mode === 'online') {
       players = s.state.players.map((p) => {
         const m = s.meta.get(p.id) || {};
-        const st = this.liveStats.get(p.id) || { goals: 0, assists: 0, shots: 0, tackles: 0 };
+        const st = this.liveStats.get(p.id) || { goals: 0, assists: 0, shots: 0 };
         return { id: p.id, name: m.name || '?', team: p.team, bot: m.bot, ...st };
       });
     } else players = s.stats.summary(s.state.score).players.filter((p) => s.state.players.some((q) => q.id === p.id));

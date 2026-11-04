@@ -4,13 +4,13 @@
 //  - 'demo'     : bots only, used as the animated menu background
 
 import {
-  makeState, addPlayer, resetKickoff, step, findPlayer, previewBallPath, kickVector, inReach,
+  makeState, addPlayer, resetKickoff, step, findPlayer,
 } from '../../shared/physics.js';
 import { decodeSnapshot } from '../../shared/protocol.js';
 import { BotBrain } from '../../shared/bot.js';
 import { MatchStats } from '../../shared/stats.js';
 import {
-  KITS, PHASE, TICK_MS, K, BTN, EMOTES, BOT_NAMES, fieldForTeamSize,
+  KITS, PHASE, TICK_MS, EMOTES, BOT_NAMES, fieldForTeamSize,
 } from '../../shared/constants.js';
 import { lerp } from '../../shared/util.js';
 import { Effects } from './effects.js';
@@ -144,7 +144,6 @@ export class Session {
     const b = this.state.ball;
     this.prevBall.x = b.x;
     this.prevBall.y = b.y;
-    this.prevBall.z = b.z;
   }
 
   renderPos(p, alpha = 1) {
@@ -165,7 +164,7 @@ export class Session {
     if (me) {
       const control = !this.replay && this.app.canControl();
       inp = control
-        ? this.app.input.sample(this.renderPos(me), this.app.renderer.cam)
+        ? this.app.input.sample(this.renderPos(me))
         : { mx: 0, my: 0, a: me.in.a, b: 0 };
     }
 
@@ -204,7 +203,7 @@ export class Session {
     if (s.tick <= this.effectsTick) return;
     this.effectsTick = s.tick;
     for (const e of ev) {
-      if (e.p === this.myId && (e.e === 'kick' || e.e === 'slide' || e.e === 'trap')) this.handleEvent(e);
+      if (e.p === this.myId && (e.e === 'kick' || e.e === 'trap')) this.handleEvent(e);
     }
   }
 
@@ -277,7 +276,7 @@ export class Session {
     if (reset) this.savePrev();
 
     for (const e of ns.events) {
-      if (e.p === this.myId && (e.e === 'kick' || e.e === 'slide' || e.e === 'trap')) continue;
+      if (e.p === this.myId && (e.e === 'kick' || e.e === 'trap')) continue;
       this.handleEvent(e);
     }
     if (this.replay && ns.phase === PHASE.KICKOFF) this.stopReplay();
@@ -299,58 +298,27 @@ export class Session {
     switch (e.e) {
       case 'kick': {
         const a = Number.isFinite(e.a) ? e.a : Math.atan2(b.vy, b.vx);
-        if (audio) audio.kick(e.v, e.k);
+        if (audio) audio.kick(e.v, 'shot');
         fx.kick(b.x, b.y, e.v, a);
-        if (e.v > 13.5) fx.addShake(2 + (e.v - 13.5) * 1.6);
+        if (e.v > 11.5) fx.addShake(2.5);
         break;
       }
       case 'trap':
-      case 'poke':
         if (audio) audio.touch();
-        break;
-      case 'block':
-        if (audio) audio.touch();
-        fx.ring(b.x, b.y, 'rgba(255,255,255,0.6)', 8, 22, 0.25);
         break;
       case 'wall':
         if (audio) audio.wall(e.v);
         break;
-      case 'bounce':
-        if (audio) audio.bounce(e.v);
-        break;
       case 'post':
         if (audio) audio.post();
-        fx.sparks(b.x, b.y, Math.max(b.z, 10));
+        fx.sparks(b.x, b.y, 10);
         fx.addShake(5);
-        if (hud) hud.popText(e.bar ? 'ÜST DİREK!' : 'DİREK!');
+        if (hud) hud.popText('DİREK!');
         break;
       case 'net':
         if (audio) audio.net(e.v);
         fx.netHit(e.s, e.y, e.z, e.v);
         break;
-      case 'slide': {
-        const p = findPlayer(this.state, e.p);
-        if (audio) audio.slide();
-        if (p) fx.dust(p.x, p.y, p.facing);
-        break;
-      }
-      case 'tackle': {
-        const v = findPlayer(this.state, e.v);
-        if (audio) audio.thud();
-        if (v) fx.stars(v.x, v.y);
-        if (hud && (e.p === this.myId || e.v === this.myId)) hud.feed(e.p === this.myId ? 'Topu kaptın! 💪' : `${this.name(e.p)} topu kaptı`, 'info');
-        break;
-      }
-      case 'foul': {
-        const v = findPlayer(this.state, e.v);
-        if (audio) {
-          audio.thud();
-          audio.whistle('short');
-        }
-        if (v) fx.stars(v.x, v.y);
-        if (hud) hud.feed(`Faul! ${this.name(e.p)} → ${this.name(e.v)}`, 'foul');
-        break;
-      }
       case 'goal':
         this.onGoal(e);
         break;
@@ -413,8 +381,8 @@ export class Session {
     const b = s.ball;
     const frame = {
       t: s.tick,
-      b: [b.x, b.y, b.z, b.vx, b.vy],
-      p: s.players.map((p) => [p.id, p.team, p.x, p.y, p.facing, p.vx, p.vy, p.ct, p.charge, p.slide, p.stun]),
+      b: [b.x, b.y, b.vx, b.vy],
+      p: s.players.map((p) => [p.id, p.team, p.x, p.y, p.facing, p.vx, p.vy, p.ct]),
     };
     const buf = this.replayBuf;
     if (buf.length && buf[buf.length - 1].t >= frame.t) return;
@@ -476,35 +444,17 @@ export class Session {
     const s = this.state;
     const players = s.players.map((p) => {
       const pos = this.renderPos(p, alpha);
-      return this.buildPlayerView(p.id, p.team, pos.x, pos.y, p.facing, p.vx, p.vy, {
-        ct: p.ct,
-        charge: p.charge / K.CHARGE_TICKS,
-        stamina: p.stamina / 100,
-        exh: p.exh,
-        slide: p.slide,
-        stun: p.stun,
-        sprint: (p.in.b & BTN.SPRINT) !== 0 && Math.hypot(p.vx, p.vy) > 3,
-      });
+      return this.buildPlayerView(p.id, p.team, pos.x, pos.y, p.facing, p.vx, p.vy, { ct: p.ct });
     });
     const b = s.ball;
     const pb = this.prevBall;
     const ball = {
       x: lerp(pb.x, b.x, alpha) + this.ballOff.x,
       y: lerp(pb.y, b.y, alpha) + this.ballOff.y,
-      z: Math.max(0, lerp(pb.z, b.z, alpha) + this.ballOff.z),
+      z: 0,
       speed: Math.hypot(b.vx, b.vy),
     };
-    let aim = null;
-    const me = this.myPlayer();
-    if (me && me.ct && this.app.prefs.aimGuide !== false && inReach(me, b) && s.phase !== PHASE.GOAL) {
-      const c = me.charge / K.CHARGE_TICKS;
-      const v = kickVector(me, me.ct, c, me.in.a);
-      const start = { ...b, vx: v.vx, vy: v.vy, vz: v.vz, spin: v.spin, z: v.vz > 0 ? Math.max(b.z, 0.01) : b.z };
-      const ticks = me.ct === 2 ? 110 : Math.round(16 + c * 34);
-      const res = previewBallPath(s.field, start, ticks, 2);
-      aim = { ct: me.ct, pts: res.pts, landing: me.ct === 2 ? res.landing : null };
-    }
-    return { field: s.field, kits: this.kits, phase: s.phase, ko: s.ko, players, ball, aim };
+    return { field: s.field, kits: this.kits, phase: s.phase, ko: s.ko, players, ball };
   }
 
   replayView(dt) {
@@ -523,16 +473,16 @@ export class Session {
     const players = a.p.map((p) => {
       const q = map.get(p[0]) || p;
       return this.buildPlayerView(p[0], p[1], lerp(p[2], q[2], k), lerp(p[3], q[3], k), q[4], p[5], p[6], {
-        ct: p[7], charge: p[8] / K.CHARGE_TICKS, stamina: 1, exh: 0, slide: p[9], stun: p[10], sprint: false,
+        ct: p[7],
       });
     });
     const ball = {
       x: lerp(a.b[0], c.b[0], k),
       y: lerp(a.b[1], c.b[1], k),
-      z: lerp(a.b[2], c.b[2], k),
-      speed: Math.hypot(a.b[3], a.b[4]),
+      z: 0,
+      speed: Math.hypot(a.b[2], a.b[3]),
     };
-    return { field: this.state.field, kits: this.kits, phase: PHASE.PLAY, ko: 0, players, ball, aim: null, replay: true };
+    return { field: this.state.field, kits: this.kits, phase: PHASE.PLAY, ko: 0, players, ball, replay: true };
   }
 
   // ---------------------------------------------------------------------------

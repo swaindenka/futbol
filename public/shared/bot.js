@@ -1,19 +1,22 @@
-// Bot AI: produces inputs for a player each tick. Runs on the server (online bots)
-// and in the browser (practice mode / animated menu background).
+// Bot AI for the one-button game. Runs on the server (online bots) and in the browser
+// (practice mode / animated menu background).
+// Bots push the ball by running behind it and press KICK when their body lines up
+// with the target (goal, open teammate or a clearance direction).
 
 import { P, B, BTN, PHASE } from './constants.js';
-import { teamPlayers, findPlayer, inReach, PHYS } from './physics.js';
+import { teamPlayers, findPlayer, PHYS } from './physics.js';
 import { clamp, distToSegment, angleDiff, lerp } from './util.js';
 
 const LEVELS = [
-  { name: 'Kolay', react: 16, speed: 0.82, aimErr: 0.2, tackle: 0.2, range: 0.34, sprint: 0.3, poke: 0.15 },
-  { name: 'Orta', react: 8, speed: 0.93, aimErr: 0.1, tackle: 0.45, range: 0.4, sprint: 0.65, poke: 0.3 },
-  { name: 'Zor', react: 3, speed: 1.0, aimErr: 0.045, tackle: 0.75, range: 0.46, sprint: 1, poke: 0.5 },
+  { name: 'Kolay', react: 14, speed: 0.8, tol: 0.5, err: 0.2, range: 0.32 },
+  { name: 'Orta', react: 7, speed: 0.92, tol: 0.36, err: 0.1, range: 0.4 },
+  { name: 'Zor', react: 3, speed: 1.0, tol: 0.26, err: 0.04, range: 0.48 },
 ];
 
 export const BOT_LEVEL_NAMES = LEVELS.map((l) => l.name);
 
 const CONTACT = PHYS.CONTACT;
+const REACH = PHYS.REACH;
 
 export class BotBrain {
   constructor(id, level = 1, rng = Math.random) {
@@ -21,50 +24,40 @@ export class BotBrain {
     this.cfg = LEVELS[clamp(level | 0, 0, 2)];
     this.rng = rng;
     this.cool = Math.floor(rng() * this.cfg.react);
-    this.action = null;
-    this.sprintMode = false;
-    this.dribbleBias = rng() < 0.5 ? -1 : 1;
+    this.hold = 0;
+    this.rest = 0;
+    this.err = 0;
   }
 
   /**
    * @param {object} s simulation state
-   * @param {Set<number>} [humans] ids of human players (bots defer the ball to human teammates)
+   * @param {Set<number>|Map<number,*>} [humans] ids of human players (bots defer the ball to them)
    */
   update(s, humans) {
     const me = findPlayer(s, this.id);
     const o = { mx: 0, my: 0, a: me ? me.facing : 0, b: 0 };
     if (!me || s.phase === PHASE.COUNTDOWN || s.phase === PHASE.ENDED) {
-      this.action = null;
+      this.hold = 0;
       return o;
     }
-    if (me.stun || me.slide || me.rec) {
-      this.action = null;
-      return o;
+    if (--this.cool <= 0) {
+      this.cool = this.cfg.react + Math.floor(this.rng() * 4);
+      this.err = (this.rng() * 2 - 1) * this.cfg.err;
     }
+    if (this.rest > 0) this.rest--;
 
     const ctx = this.context(s, me, humans);
-
-    if (this.action) {
-      this.runAction(s, me, ctx, o);
-      return o;
-    }
-
-    let decide = false;
-    if (--this.cool <= 0) {
-      decide = true;
-      this.cool = this.cfg.react + Math.floor(this.rng() * 4);
-      this.sprintMode = this.rng() < this.cfg.sprint;
-    }
-
-    if (s.phase === PHASE.GOAL) {
-      this.moveTo(o, me, ctx.home.x, ctx.home.y, false);
-      return o;
-    }
-
-    if (ctx.hasBall) this.withBall(s, me, ctx, o, decide);
-    else if (ctx.isKeeper) this.keeper(s, me, ctx, o, decide);
-    else if (ctx.isChaser) this.chase(s, me, ctx, o, decide);
+    if (s.phase === PHASE.GOAL) this.moveTo(o, me, ctx.home.x, ctx.home.y);
+    else if (ctx.isKeeper) this.keeper(s, me, ctx, o);
+    else if (ctx.isChaser && !ctx.kickoffWait) this.attack(s, me, ctx, o);
     else this.support(s, me, ctx, o);
+
+    // Kick button handling: hold for a few ticks, then rest so the next press is a new edge.
+    if (this.hold > 0) {
+      this.hold--;
+      o.b |= BTN.KICK;
+      if (this.hold === 0) this.rest = 4;
+    }
     return o;
   }
 
@@ -76,186 +69,122 @@ export class BotBrain {
     const opps = s.players.filter((p) => p.team !== me.team);
     const n = mates.length;
     const keeperP = n >= 3 ? mates[n - 1] : null;
-    const isKeeper = keeperP === me;
-    const hasBall = b.owner === me.id;
 
-    // Who chases? Fastest outfield player to reach the ball; humans get priority.
     let chaser = null;
     let best = Infinity;
     for (const m of mates) {
       if (m === keeperP) continue;
       let d = Math.hypot(b.x - m.x, b.y - m.y);
-      // Being goal-side of the ball is a bonus.
-      if ((b.x - m.x) * dir > 0) d -= 25;
+      if ((b.x - m.x) * dir > 0) d -= 25; // goal-side of the ball is better
       if (humans && humans.has(m.id)) d -= 45;
       if (d < best) {
         best = d;
         chaser = m;
       }
     }
-    const isChaser = chaser === me || (!chaser && !isKeeper);
-
     const outfield = mates.filter((m) => m !== keeperP);
     const rank = Math.max(0, outfield.indexOf(me));
-
-    const spotX = (n >= 3 && isKeeper ? -0.82 : -0.35) * f.hw * dir;
-    const home = { x: spotX, y: (rank - (outfield.length - 1) / 2) * f.hh * 0.5 };
-
+    const isKeeper = keeperP === me;
+    const homeX = (isKeeper ? -0.82 : -0.35) * f.hw * dir;
     return {
-      f, b, dir, mates, opps, n, isKeeper, hasBall, isChaser, outfield, rank, home,
+      f, b, dir, mates, opps, outfield, rank,
+      isKeeper,
+      isChaser: chaser === me || (!chaser && !isKeeper),
+      home: { x: homeX, y: (rank - (outfield.length - 1) / 2) * f.hh * 0.5 },
       goalX: dir * f.hw,
       ownX: -dir * f.hw,
       kickoffWait: s.phase === PHASE.KICKOFF && s.ko !== me.team,
     };
   }
 
-  setAction(btn, hold, aim) {
-    this.action = { btn, hold: Math.max(1, Math.round(hold)), aim, t: 0 };
-  }
-
-  runAction(s, me, ctx, o) {
-    const a = this.action;
-    a.t++;
-    o.a = a.aim;
-    const b = ctx.b;
-    if (a.t <= a.hold) {
-      o.b = a.btn;
-      // Shuffle toward the ball while winding up so it stays in reach.
-      const dx = b.x - me.x;
-      const dy = b.y - me.y;
-      const d = Math.hypot(dx, dy);
-      if (d > CONTACT + 2) {
-        o.mx = (dx / d) * 0.6;
-        o.my = (dy / d) * 0.6;
-      }
-      if (a.btn & (BTN.SHOOT | BTN.LOB) && d > 90) {
-        this.action = null; // ball is gone, abort
-        o.b = 0;
-      }
-    } else {
-      o.b = 0;
-      this.action = null;
-    }
-  }
-
-  moveTo(o, me, tx, ty, sprintOk) {
+  moveTo(o, me, tx, ty, fast = true) {
     const dx = tx - me.x;
     const dy = ty - me.y;
     const d = Math.hypot(dx, dy);
     if (d < 3) return;
-    const mag = clamp(d / 36, 0, 1) * this.cfg.speed;
+    const mag = clamp(d / (fast ? 22 : 36), 0, 1) * this.cfg.speed;
     o.mx = (dx / d) * mag;
     o.my = (dy / d) * mag;
-    if (sprintOk && this.sprintMode && d > 130 && me.stamina > 35 && !me.exh) o.b |= BTN.SPRINT;
   }
 
+  /** Where the ball will roughly be when we can reach it. */
   intercept(s, me) {
     const b = s.ball;
     const f = s.field;
-    const spd = P.SPEED * this.cfg.speed * 1.15;
+    const spd = P.SPEED * this.cfg.speed * 1.1;
     let px = b.x;
     let py = b.y;
     for (let t = 0; t <= 60; t += 3) {
       const k = (1 - B.FRICTION ** t) / (1 - B.FRICTION);
       px = clamp(b.x + b.vx * k, -f.hw + 10, f.hw - 10);
       py = clamp(b.y + b.vy * k, -f.hh + 10, f.hh - 10);
-      const reach = Math.hypot(px - me.x, py - me.y) - CONTACT;
-      if (reach <= t * spd) return { x: px, y: py, t };
+      if (Math.hypot(px - me.x, py - me.y) - CONTACT <= t * spd) break;
     }
-    return { x: px, y: py, t: 60 };
+    return { x: px, y: py };
   }
 
-  chase(s, me, ctx, o, decide) {
-    const { f, b, dir, goalX } = ctx;
-    if (ctx.kickoffWait) {
-      this.support(s, me, ctx, o);
-      return;
-    }
+  /** Steer behind the ball relative to `ang` and kick when lined up (if `shoot`). */
+  strike(s, me, o, ang, shoot) {
     const ip = this.intercept(s, me);
-    let ax = goalX - ip.x;
-    let ay = -ip.y * 0.6;
-    const al = Math.hypot(ax, ay) || 1;
-    ax /= al;
-    ay /= al;
+    const ax = Math.cos(ang);
+    const ay = Math.sin(ang);
     const rel = (me.x - ip.x) * ax + (me.y - ip.y) * ay;
     const d = Math.hypot(ip.x - me.x, ip.y - me.y);
     let tx;
     let ty;
-    if (rel > -4 && d < 130) {
+    if (rel > -CONTACT * 0.6 && d < 120) {
       // Wrong side of the ball: loop around it.
       const side = (me.x - ip.x) * -ay + (me.y - ip.y) * ax >= 0 ? 1 : -1;
-      tx = ip.x - ax * (CONTACT + 16) + -ay * side * (CONTACT + 14);
-      ty = ip.y - ay * (CONTACT + 16) + ax * side * (CONTACT + 14);
-    } else if (d > 160) {
-      tx = ip.x;
-      ty = ip.y;
+      tx = ip.x - ax * (CONTACT + 14) - ay * side * (CONTACT + 12);
+      ty = ip.y - ay * (CONTACT + 14) + ax * side * (CONTACT + 12);
+    } else if (d > 140) {
+      tx = ip.x - ax * CONTACT;
+      ty = ip.y - ay * CONTACT;
     } else {
-      tx = ip.x - ax * (CONTACT - 4);
-      ty = ip.y - ay * (CONTACT - 4);
+      // Run through the ball: pushes it along `ang`.
+      tx = ip.x + ax * 10;
+      ty = ip.y + ay * 10;
     }
-    this.moveTo(o, me, clamp(tx, -f.hw, f.hw), clamp(ty, -f.hh, f.hh), true);
-    o.a = Math.atan2(ay, ax);
-
-    if (!decide) return;
-    // Defensive actions against an opponent in possession.
-    const owner = b.owner >= 0 ? findPlayer(s, b.owner) : null;
-    if (owner && owner.team !== me.team) {
-      const od = Math.hypot(owner.x - me.x, owner.y - me.y);
-      const face = Math.abs(angleDiff(me.facing, Math.atan2(owner.y - me.y, owner.x - me.x)));
-      if (od < 50 && face < 0.7 && me.tcd === 0 && this.rng() < this.cfg.tackle * 0.45) {
-        o.mx = Math.cos(me.facing);
-        o.my = Math.sin(me.facing);
-        this.setAction(BTN.TACKLE, 1, me.facing);
-        o.b = BTN.TACKLE;
-        return;
-      }
-      if (inReach(me, b) && this.rng() < this.cfg.poke) {
-        this.setAction(BTN.SHOOT, 2, Math.atan2(-b.y * 0.5, goalX - b.x));
-        return;
-      }
-    }
-    // Loose ball in reach near our goal: clear it.
-    if (!owner && inReach(me, b) && Math.abs(b.x - ctx.ownX) < f.w * 0.25) {
-      const aim = Math.atan2(clamp(-b.y, -1, 1) * 0.3 + (this.rng() - 0.5) * 0.8, dir);
-      this.setAction(BTN.SHOOT, 30 + this.rng() * 15, aim);
-    }
-    void dir;
+    const f = s.field;
+    const lim = P.R - PHYS.EDGE;
+    this.moveTo(o, me, clamp(tx, -f.hw + lim, f.hw - lim), clamp(ty, -f.hh + lim, f.hh - lim));
+    if (this.hold || this.rest) return;
+    const b = s.ball;
+    const bd = Math.hypot(b.x - me.x, b.y - me.y);
+    if (bd > REACH + 6) return;
+    const bodyAng = Math.atan2(b.y - me.y, b.x - me.x);
+    const diff = Math.abs(angleDiff(bodyAng, ang));
+    // Ball on the boards: accept any kick that still goes our way (bank it out).
+    const onBoards = Math.abs(b.y) > f.hh - 30 || Math.abs(b.x) > f.hw - 30;
+    if ((shoot && diff < this.cfg.tol) || (onBoards && diff < 1.1 && Math.cos(bodyAng) * Math.cos(ang) > 0)) this.hold = 6;
   }
 
-  bestShot(s, me, ctx) {
+  shotAngle(s, ctx) {
     const { f, b, opps, goalX } = ctx;
     const ys = [-f.gh + B.R + 8, f.gh - B.R - 8, 0, -f.gh * 0.5, f.gh * 0.5];
     let best = null;
     for (const y of ys) {
       let clearance = Infinity;
-      for (const q of opps) {
-        const dd = distToSegment(q.x, q.y, b.x, b.y, goalX, y) - P.R;
-        if (dd < clearance) clearance = dd;
-      }
+      for (const q of opps) clearance = Math.min(clearance, distToSegment(q.x, q.y, b.x, b.y, goalX, y) - P.R);
       if (!best || clearance > best.clearance) best = { y, clearance };
     }
-    return best;
+    return { ang: Math.atan2(best.y - b.y, goalX - b.x) + this.err, clear: best.clearance };
   }
 
-  findPass(s, me, ctx, mustForward) {
+  openMate(s, me, ctx) {
     const { b, opps, mates, dir } = ctx;
     let best = null;
     let bestScore = -Infinity;
     for (const m of mates) {
       if (m === me) continue;
       const d = Math.hypot(m.x - b.x, m.y - b.y);
-      if (d < 70 || d > 700) continue;
+      if (d < 90 || d > 520) continue;
       let lane = Infinity;
-      for (const q of opps) {
-        const dd = distToSegment(q.x, q.y, b.x, b.y, m.x, m.y);
-        if (dd < lane) lane = dd;
-      }
-      if (lane < CONTACT + 10) continue;
-      let space = Infinity;
-      for (const q of opps) space = Math.min(space, Math.hypot(q.x - m.x, q.y - m.y));
-      const forward = (m.x - me.x) * dir;
-      if (mustForward && forward < -40) continue;
-      const score = forward * 0.6 + Math.min(space, 200) * 0.8 + Math.min(lane, 120) * 0.4 - d * 0.15;
+      for (const q of opps) lane = Math.min(lane, distToSegment(q.x, q.y, b.x, b.y, m.x, m.y));
+      if (lane < CONTACT + 12) continue;
+      const forward = (m.x - b.x) * dir;
+      if (forward < 20) continue;
+      const score = forward + Math.min(lane, 120);
       if (score > bestScore) {
         bestScore = score;
         best = m;
@@ -264,88 +193,40 @@ export class BotBrain {
     return best;
   }
 
-  withBall(s, me, ctx, o, decide) {
-    const { f, b, dir, opps, goalX } = ctx;
-    const dGoal = Math.hypot(goalX - me.x, me.y * 0.8);
-
-    // Dribble direction toward goal with avoidance.
-    let vx = goalX - me.x;
-    let vy = -me.y * 0.7;
-    const vl = Math.hypot(vx, vy) || 1;
-    vx /= vl;
-    vy /= vl;
-    let pressure = Infinity;
-    for (const q of opps) {
-      const dx = me.x - q.x;
-      const dy = me.y - q.y;
-      const d = Math.hypot(dx, dy);
-      const ahead = (q.x - me.x) * dir > -10;
-      if (ahead) pressure = Math.min(pressure, d);
-      if (d < 150 && d > 0) {
-        const w = ((150 - d) / 150) * 1.4;
-        // Sidestep perpendicular to the threat rather than straight away.
-        const px = -dy / d;
-        const py = dx / d;
-        const side = px * vx + py * vy >= 0 ? 1 : -1;
-        vx += (dx / d) * w * 0.35 + px * side * w * 0.6;
-        vy += (dy / d) * w * 0.35 + py * side * w * 0.6;
-      }
-    }
-    // Stay off the boards.
-    if (me.y > f.hh - 70) vy -= 0.8;
-    if (me.y < -f.hh + 70) vy += 0.8;
-    const l2 = Math.hypot(vx, vy) || 1;
-    o.mx = (vx / l2) * this.cfg.speed;
-    o.my = (vy / l2) * this.cfg.speed;
-    if (this.sprintMode && pressure > 90 && me.stamina > 45 && !me.exh) o.b |= BTN.SPRINT;
-
-    if (!decide) return;
-    if (s.phase === PHASE.KICKOFF) {
-      const mate = this.findPass(s, me, ctx, false);
-      if (mate) {
-        this.setAction(BTN.PASS, 1, Math.atan2(mate.y - b.y, mate.x - b.x));
-        return;
-      }
-    }
-    const err = (this.rng() * 2 - 1) * this.cfg.aimErr;
-    const shot = this.bestShot(s, me, ctx);
-    const range = this.cfg.range * f.w;
-    if (dGoal < range && (shot.clearance > CONTACT || dGoal < f.w * 0.15)) {
-      const aim = Math.atan2(shot.y - b.y, goalX - b.x) + err;
-      const c = clamp(0.4 + dGoal / (f.w * 0.45), 0.45, 1);
-      this.setAction(BTN.SHOOT, c * 45, aim);
+  attack(s, me, ctx, o) {
+    const { f, b, goalX, opps } = ctx;
+    const dGoal = Math.hypot(goalX - b.x, b.y);
+    const shot = this.shotAngle(s, ctx);
+    const inRange = dGoal < this.cfg.range * f.w;
+    if (inRange && (shot.clear > 0 || dGoal < f.w * 0.15)) {
+      this.strike(s, me, o, shot.ang, true);
       return;
     }
-    if (pressure < 75 || (this.rng() < 0.08 && dGoal > range)) {
-      const mate = this.findPass(s, me, ctx, pressure > 75);
+    // Under pressure: pass to an open teammate further forward.
+    let pressure = Infinity;
+    for (const q of opps) pressure = Math.min(pressure, Math.hypot(q.x - b.x, q.y - b.y));
+    if (pressure < 80) {
+      const mate = this.openMate(s, me, ctx);
       if (mate) {
-        this.setAction(BTN.PASS, 1, Math.atan2(mate.y - b.y, mate.x - b.x) + err * 0.5);
+        this.strike(s, me, o, Math.atan2(mate.y - b.y, mate.x - b.x) + this.err, true);
         return;
       }
-      if (pressure < 45 && this.rng() < 0.35) {
-        // Chip it over the defender toward goal.
-        const aim = Math.atan2(-b.y * 0.5, goalX - b.x) + err;
-        this.setAction(BTN.LOB, 15 + this.rng() * 25, aim);
-      }
     }
+    // Otherwise dribble (push) toward goal, drifting away from the boards.
+    const ty = clamp(-b.y * 0.6, -f.hh, f.hh);
+    this.strike(s, me, o, Math.atan2(ty - b.y * 0.3, goalX - b.x), false);
   }
 
-  keeper(s, me, ctx, o, decide) {
+  keeper(s, me, ctx, o) {
     const { f, b, dir, ownX, mates } = ctx;
     const homeX = ownX + dir * (P.R + 12);
     const dOwn = Math.hypot(b.x - ownX, b.y);
-    let closest = true;
     const myD = Math.hypot(b.x - me.x, b.y - me.y);
+    let closest = true;
     for (const m of mates) if (m !== me && Math.hypot(b.x - m.x, b.y - m.y) < myD - 10) closest = false;
-    const owner = b.owner >= 0 ? findPlayer(s, b.owner) : null;
-    const threat = !owner || owner.team !== me.team;
-    if (threat && b.z < 30 && (dOwn < f.w * 0.11 || (dOwn < f.w * 0.2 && closest))) {
-      const ip = this.intercept(s, me);
-      this.moveTo(o, me, ip.x - dir * 6, ip.y, true);
-      if (decide && inReach(me, b)) {
-        const aim = Math.atan2((b.y >= 0 ? 1 : -1) * 0.55, dir);
-        this.setAction(this.rng() < 0.5 ? BTN.LOB : BTN.SHOOT, 30 + this.rng() * 15, aim);
-      }
+    if (dOwn < f.w * 0.11 || (dOwn < f.w * 0.2 && closest)) {
+      // Clear it upfield, toward the nearer side.
+      this.strike(s, me, o, Math.atan2((b.y >= 0 ? 1 : -1) * 0.5, dir), true);
       return;
     }
     let ty = clamp(b.y * 0.55, -f.gh + 8, f.gh - 8);
@@ -355,7 +236,6 @@ export class BotBrain {
     }
     const tx = homeX + dir * clamp((f.w * 0.5 - dOwn) * 0.05, 0, 26);
     this.moveTo(o, me, tx, ty, false);
-    o.a = Math.atan2(b.y - me.y, b.x - me.x);
   }
 
   support(s, me, ctx, o) {
@@ -366,7 +246,7 @@ export class BotBrain {
     const attacking = b.lt === me.team;
     let tx;
     let ty;
-    if (ctx.kickoffWait || s.phase === PHASE.KICKOFF) {
+    if (s.phase === PHASE.KICKOFF) {
       tx = ctx.home.x;
       ty = ctx.home.y;
     } else if (attacking) {
@@ -375,14 +255,12 @@ export class BotBrain {
     } else {
       tx = lerp(ownX, b.x, 0.5);
       ty = laneY * 0.6 + b.y * 0.35;
-      // Mark the most dangerous free opponent in our lane.
       let mark = null;
       let md = Infinity;
       for (const q of opps) {
         if (q.id === b.owner) continue;
         const dGoal = Math.abs(q.x - ownX);
-        const laneDist = Math.abs(q.y - laneY);
-        const score = dGoal + laneDist * 1.5;
+        const score = dGoal + Math.abs(q.y - laneY) * 1.5;
         if (score < md && dGoal < f.w * 0.6) {
           md = score;
           mark = q;
@@ -393,7 +271,6 @@ export class BotBrain {
         ty = lerp(mark.y, 0, 0.15);
       }
     }
-    // Keep spacing from teammates.
     for (const q of mates) {
       if (q === me) continue;
       const dx = tx - q.x;
@@ -404,7 +281,6 @@ export class BotBrain {
         ty += (dy / d) * (90 - d) * 0.6;
       }
     }
-    this.moveTo(o, me, clamp(tx, -f.hw + 30, f.hw - 30), clamp(ty, -f.hh + 30, f.hh - 30), !attacking);
-    o.a = Math.atan2(b.y - me.y, b.x - me.x);
+    this.moveTo(o, me, clamp(tx, -f.hw + 30, f.hw - 30), clamp(ty, -f.hh + 30, f.hh - 30), false);
   }
 }
