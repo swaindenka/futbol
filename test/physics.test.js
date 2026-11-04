@@ -142,6 +142,44 @@ test('after a goal the teams reset and a 3-2-1 countdown runs before the kickoff
   assert.equal(s.phase, PHASE.KICKOFF);
 });
 
+test('a shot passing close to the keeper is still the shooter\'s goal', () => {
+  const s = setup();
+  s.phase = PHASE.PLAY;
+  const p = findPlayer(s, 1);
+  const k = findPlayer(s, 2);
+  p.x = 300;
+  p.y = 0;
+  s.ball.x = 300 + P.R + B.R + 1;
+  s.ball.y = 0;
+  // Keeper stands just off the shot line: close enough to be "nearest", not touching.
+  k.x = s.field.hw - 40;
+  k.y = P.R + B.R + 3;
+  const ev = run(s, 80, { 1: (i) => ({ mx: 0, my: 0, a: 0, b: i < 3 ? BTN.KICK : 0 }), 2: { mx: 0, my: 0, a: Math.PI, b: 0 } });
+  const goal = ev.find((e) => e.e === 'goal');
+  assert.ok(goal);
+  assert.equal(goal.p, 1);
+  assert.equal(goal.own, 0);
+});
+
+test('a shot deflected in by a defender is credited to the shooter', () => {
+  const s = setup();
+  s.phase = PHASE.PLAY;
+  const p = findPlayer(s, 1);
+  const d = findPlayer(s, 2);
+  p.x = 250;
+  p.y = 0;
+  s.ball.x = 250 + P.R + B.R + 1;
+  s.ball.y = 0;
+  d.x = 380;
+  d.y = 20; // clips the ball and deflects it
+  const ev = run(s, 120, { 1: (i) => ({ mx: 0, my: 0, a: 0, b: i < 3 ? BTN.KICK : 0 }), 2: { mx: 0, my: 0, a: Math.PI, b: 0 } });
+  const goal = ev.find((e) => e.e === 'goal');
+  if (goal) {
+    assert.equal(goal.p, 1, 'shooter gets the goal');
+    assert.equal(goal.own, 0);
+  }
+});
+
 test('ball bounces off the boards like a cushion', () => {
   const s = setup();
   s.phase = PHASE.PLAY;

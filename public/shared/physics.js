@@ -31,7 +31,8 @@ export function makeField(key) {
 
 export function makeBall() {
   // z stays 0 (no lofted balls) but is kept for the renderer.
-  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, owner: -1, last: -1, prev: -1, lt: -1 };
+  // lk / lkt / lka: last kicker, the tick of that kick and the kicker's assist candidate.
+  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, owner: -1, last: -1, prev: -1, lt: -1, lk: -1, lkt: -1, lka: -1 };
 }
 
 export function makeInput(team = 0) {
@@ -136,6 +137,8 @@ export function removePlayer(s, id) {
   if (b.owner === id) b.owner = -1;
   if (b.last === id) b.last = -1;
   if (b.prev === id) b.prev = -1;
+  if (b.lk === id) b.lk = -1;
+  if (b.lka === id) b.lka = -1;
   return p;
 }
 
@@ -155,6 +158,8 @@ export function resetKickoff(s) {
   b.vx = b.vy = 0;
   b.owner = -1;
   b.prev = -1;
+  b.lk = -1;
+  b.lka = -1;
   s.kt = 0;
 }
 
@@ -247,6 +252,9 @@ function kicks(s, ev) {
     p.ct = 0;
     p.kcd = K.KICK_CD;
     touch(s, p);
+    b.lk = p.id;
+    b.lkt = s.tick;
+    b.lka = b.prev;
     const v = Math.round(Math.hypot(vx, vy) * 10) / 10;
     ev.push({ e: 'kick', p: p.id, v, a: Math.round(Math.atan2(vy, vx) * 100) / 100 });
   }
@@ -269,8 +277,8 @@ function ownership(s, ev) {
     return;
   }
   if (b.owner !== best.id) {
+    // Being near the ball is not a touch: only real contact (collision / kick) credits a player.
     b.owner = best.id;
-    touch(s, best);
     ev.push({ e: 'trap', p: best.id });
   }
 }
@@ -512,13 +520,24 @@ function checkGoal(s, ev) {
   s.phase = PHASE.GOAL;
   s.pt = s.rules.pause;
   s.ko = 1 - team;
-  const scorer = findPlayer(s, b.last);
-  const own = scorer ? (scorer.team !== team ? 1 : 0) : 0;
+  let scorerId = b.last;
+  let assist = b.prev;
+  const scorer = findPlayer(s, scorerId);
+  let own = scorer ? (scorer.team !== team ? 1 : 0) : 0;
+  if (own) {
+    // A shot that merely deflects off a defender still belongs to the shooter.
+    const kicker = findPlayer(s, b.lk);
+    if (kicker && kicker.team === team && s.tick - b.lkt < 150) {
+      scorerId = kicker.id;
+      assist = b.lka;
+      own = 0;
+    }
+  }
   ev.push({
     e: 'goal',
     t: team,
-    p: b.last,
-    a: own ? -1 : b.prev,
+    p: scorerId,
+    a: own ? -1 : assist,
     own,
     s: [s.score[0], s.score[1]],
   });
