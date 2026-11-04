@@ -29,6 +29,7 @@ oyuncular forma desenli pullar olarak görünür.
 - Emote'lar, oyun içi sohbet, skor tablosu (Tab), mini harita, kamera modları (otomatik / tüm saha / takip), kamera açısı ayarı
 - Klavye (WASD veya ok tuşları), **gamepad**, **mobil dokunmatik joystick + tek VUR tuşu** (saydamlık ve boyut ayarlı)
 - Oda kodu ve **davet linki** (`?oda=KOD`), açık oda listesi, hızlı maç, sunucusuz **antrenman** modu
+- Oda lobisinde ve maç menüsünde **Profilim**: takma ad ve forma numarası her an değiştirilebilir
 
 ## Çalıştırma
 
@@ -86,5 +87,6 @@ test/              node:test ile fizik ve uçtan uca sunucu testleri
   sunucudan gelen her durumda onaylanmamış girdileri yeniden oynatır. Hatalar görsel olarak yumuşatılır;
   böylece yüksek pingte bile kendi oyuncun gecikmesiz hareket eder.
 - Oyuncu maç ortasında çıkarsa yerine bot geçer; oda sahibi ayrılırsa sahiplik devredilir.
+- **Yeniden bağlanma:** her sekmenin bir oturum anahtarı vardır. Sayfa yenilenirse ya da telefonda uygulamadan çıkılıp dönülürse eski bağlantı hemen kapatılır, oyuncu aynı kimlik, takım ve istatistiklerle (oda sahibiyse sahiplikle) geri döner. Tek kişilik boş oda 30 saniye korunur.
 
 **Hata ayıklama parametreleri:** `?lag=150` (yapay gecikme, ms), `?server=wss://...` (farklı sunucu), `?oda=KOD` (odaya doğrudan katıl).

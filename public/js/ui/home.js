@@ -57,6 +57,12 @@ export class HomeScreen {
     this.renderRooms([]);
   }
 
+  syncProfile() {
+    if (document.activeElement !== this.name) this.name.value = this.app.prefs.name;
+    if (document.activeElement !== this.number) this.number.value = this.app.prefs.number;
+    this.updateJersey();
+  }
+
   updateJersey(live = false) {
     const v = live ? this.number.value : this.app.prefs.number;
     $('#jersey-num').textContent = String(v || '').slice(0, 2);
@@ -85,7 +91,7 @@ export class HomeScreen {
     rooms.forEach((r, i) => {
       const slots = el('span', { class: 'slots' });
       for (let k = 0; k < r.max; k++) slots.append(el('i', { class: k < r.players ? 'on' : '' }));
-      const row = el('div', { class: 'room-row', style: { animationDelay: `${i * 30}ms` } },
+      const row = el('div', { class: 'room-row' },
         el('div', { class: 'rr-icon', text: `${r.teamSize}v${r.teamSize}` }),
         el('div', {},
           el('div', { class: 'rr-name', text: r.name }),

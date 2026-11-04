@@ -56,6 +56,43 @@ export class Modals {
     });
   }
 
+  profile() {
+    const app = this.app;
+    const name = el('input', { class: 'input', maxlength: 16, value: app.prefs.name, spellcheck: 'false', autocomplete: 'nickname' });
+    const num = el('input', { class: 'input', type: 'number', min: 1, max: 99, inputmode: 'numeric', value: app.prefs.number, style: { textAlign: 'center', fontFamily: 'var(--display)', fontSize: '18px' } });
+    const jersey = el('div', { class: 'jersey', html: '<svg viewBox="0 0 100 100" aria-hidden="true"><use href="#ico-jersey"/></svg><span></span>' });
+    const kits = app.session && app.session.mode !== 'demo' ? app.session.kits : app.room ? app.room.settings.kits.map((i) => KITS[i]) : [KITS[0], KITS[4]];
+    const me = app.room && app.room.players.find((p) => p.id === app.myId);
+    const team = me && me.team >= 0 ? me.team : 0;
+    jersey.querySelector('svg').style.color = kits[team].primary;
+    const paint = () => {
+      jersey.querySelector('span').textContent = String(num.value || '').slice(0, 2);
+    };
+    paint();
+    num.addEventListener('input', paint);
+    const m = openModal({
+      id: 'profile',
+      title: 'Profilim',
+      body: el('div', { class: 'profile' }, jersey,
+        el('label', { class: 'field grow' }, el('span', { text: 'Takma ad' }), name),
+        el('label', { class: 'field num' }, el('span', { text: 'No' }), num)),
+      foot: [
+        el('button', { class: 'btn ghost', type: 'button', onclick: () => m.close() }, 'Vazgeç'),
+        el('button', { class: 'btn primary', type: 'button', onclick: save }, 'Kaydet'),
+      ],
+    });
+    function save() {
+      const n = name.value.replace(/\s+/g, ' ').trim().slice(0, 16);
+      let v = Math.floor(+num.value);
+      if (!Number.isFinite(v) || v < 1 || v > 99) v = app.prefs.number;
+      app.setProfile(n || app.prefs.name, v);
+      m.close();
+    }
+    for (const inp of [name, num]) inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') save();
+    });
+  }
+
   practice() {
     const app = this.app;
     const opts = { teamSize: 3, level: 1, duration: 180, ...(app.prefs.practice || {}) };
@@ -189,6 +226,7 @@ export class Modals {
       });
       list.append(el('div', { class: 'set-row' }, el('label', { text: 'Takım değiştir' }), teams));
     }
+    list.append(el('button', { class: 'btn', type: 'button', onclick: () => { m.close(); this.profile(); } }, icon('jersey-sm'), 'Profilim (ad / numara)'));
     list.append(el('button', { class: 'btn', type: 'button', onclick: () => { m.close(); this.settings(); } }, icon('gear'), 'Ayarlar'));
     list.append(el('button', { class: 'btn', type: 'button', onclick: () => { m.close(); this.help(); } }, icon('keyboard'), 'Kontroller'));
     if (host) list.append(el('button', { class: 'btn', type: 'button', onclick: () => { app.net.send({ t: 'stop' }); m.close(); } }, icon('x'), 'Maçı bitir'));
@@ -253,7 +291,6 @@ export class Modals {
         } else if (app.screen === 'game' && (!app.session || app.session.ended)) app.toRoom();
       },
     });
-    void KITS;
     void upper;
     return m;
   }
