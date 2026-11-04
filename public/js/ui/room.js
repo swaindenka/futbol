@@ -32,6 +32,7 @@ export class RoomScreen {
       if (await copyText(url)) toast('Davet linki kopyalandı — arkadaşlarına gönder!', 'ok');
     });
     $('#btn-start').addEventListener('click', () => app.net.send({ t: 'start' }));
+    $('#btn-profile').addEventListener('click', () => app.modals.profile());
     $('#btn-shuffle').addEventListener('click', () => app.net.send({ t: 'shuffle' }));
     for (const b of $$('[data-join]', this.root)) b.addEventListener('click', () => app.net.send({ t: 'team', team: +b.dataset.join }));
     $('#room-chat-form').addEventListener('submit', (e) => {
@@ -62,6 +63,11 @@ export class RoomScreen {
     const st = room.settings;
     const kits = st.kits.map((i) => KITS[i]);
     $('#room-name').textContent = room.name;
+    const mine = room.players.find((p) => p.id === me);
+    if (mine) {
+      $('#room-my-num').textContent = mine.number;
+      $('#room-my-name').textContent = mine.name;
+    }
     $('#room-code').textContent = room.code;
     $('#room-visibility').textContent = room.isPublic ? '🌐 Herkese açık' : '🔒 Gizli';
     $('#room-count').textContent = `${room.players.length}/${MAX_ROOM_PLAYERS} kişi`;
@@ -78,7 +84,6 @@ export class RoomScreen {
         p.name,
         host && p.id !== me ? el('button', { class: 'kick-btn', title: 'Odadan at', style: { border: 'none', background: 'none', color: 'var(--dim)' }, onclick: () => this.app.net.send({ t: 'kick', id: p.id }) }, icon('x')) : null));
     }
-    const mine = room.players.find((p) => p.id === me);
     $('[data-join="-1"]', this.root).hidden = !mine || mine.team < 0;
 
     this.renderSettings(st, host, room);
@@ -146,7 +151,11 @@ export class RoomScreen {
     }
     const list = el('div', { class: 'slots-list' });
     for (const p of members) {
-      list.append(el('div', { class: `pslot ${p.id === me ? 'me' : ''}` },
+      list.append(el('div', {
+        class: `pslot ${p.id === me ? 'me' : ''}`,
+        title: p.id === me ? 'Adını / numaranı değiştirmek için tıkla' : undefined,
+        onclick: p.id === me ? () => this.app.modals.profile() : undefined,
+      },
         el('span', { class: 'num', text: p.number }),
         el('span', { class: 'pname', text: p.name + (p.id === me ? ' (sen)' : '') }),
         p.id === room.hostId ? el('span', { class: 'host', title: 'Oda sahibi' }, icon('crown')) : null,

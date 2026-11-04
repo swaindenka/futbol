@@ -227,7 +227,6 @@ input[type=number] { -moz-appearance: textfield; }
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 14px;
   padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--line); transition: background .2s, border-color .2s, transform .15s;
-  animation: row-in .35s ease both;
 }
 .room-row:hover { background: rgba(255, 255, 255, 0.05); border-color: var(--line-2); transform: translateX(2px); }
 @keyframes row-in { from { opacity: 0; transform: translateY(6px); } }
@@ -258,6 +257,12 @@ input[type=number] { -moz-appearance: textfield; }
 .room-title h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 24px; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .room-meta { display: flex; gap: 10px; align-items: center; margin-top: 2px; font-size: 13px; }
 .room-code { display: flex; align-items: center; gap: 10px; }
+.profile-btn { gap: 8px; max-width: 220px; }
+.profile-btn #room-my-name { overflow: hidden; text-overflow: ellipsis; }
+.profile-btn .pnum { min-width: 24px; height: 22px; padding: 0 5px; border-radius: 7px; display: grid; place-items: center; background: var(--lime); color: #0b1404; font-family: var(--display); font-size: 12px; }
+.pslot.me { cursor: pointer; }
+.pslot.me:hover { background: rgba(182, 255, 59, 0.12); }
+.modal .profile { margin-top: 4px; }
 .code-chip {
   display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px;
   border-radius: 12px; border: 1px dashed rgba(182, 255, 59, 0.5); background: rgba(182, 255, 59, 0.06); color: var(--lime);
@@ -313,7 +318,6 @@ input[type=number] { -moz-appearance: textfield; }
 .pslot {
   display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 12px; border-radius: 12px;
   background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line);
-  animation: row-in .3s ease both;
 }
 .pslot.me { border-color: rgba(182, 255, 59, 0.55); background: rgba(182, 255, 59, 0.07); }
 .pslot.empty-slot { border-style: dashed; color: var(--dim); background: transparent; justify-content: center; font-size: 13px; }
@@ -429,7 +433,8 @@ input[type=number] { -moz-appearance: textfield; }
 .hud-chat-form input { width: 100%; height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid rgba(182, 255, 59, .55); background: rgba(5, 9, 18, .85); outline: none; user-select: text; }
 .minimap { position: absolute; right: 14px; bottom: calc(14px + var(--safe-b)); width: 200px; height: 112px; border-radius: 12px; border: 1px solid var(--line-2); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
 
-.countdown { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 140px; color: #fff; text-shadow: 0 10px 50px rgba(0, 0, 0, .8), 0 0 40px rgba(182, 255, 59, .5); pointer-events: none; }
+.countdown { position: absolute; left: 0; right: 0; top: 22%; display: flex; flex-direction: column; align-items: center; gap: 10px; font-family: var(--display); color: #fff; text-shadow: 0 10px 50px rgba(0, 0, 0, .8), 0 0 40px rgba(182, 255, 59, .5); pointer-events: none; }
+.countdown small { font-family: var(--display); font-size: 15px; letter-spacing: .12em; text-transform: uppercase; padding: 5px 14px; border-radius: 99px; background: rgba(6, 9, 18, .7); border: 1px solid var(--k, #fff); box-shadow: 0 0 18px var(--k, transparent); text-shadow: none; }
 .countdown span {
   display: grid; place-items: center; width: 1.45em; height: 1.45em; border-radius: 50%; line-height: 1;
   font-size: 110px; padding-top: .06em;

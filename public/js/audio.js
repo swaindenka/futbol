@@ -9,6 +9,7 @@ export class Audio {
     this.muted = false;
     this.noise = null;
     this.crowdLevel = 0.12;
+    this.crowdHold = 0;
     this.lastPlay = new Map();
   }
 
@@ -96,6 +97,8 @@ export class Audio {
   setCrowd(level, time = 0.8) {
     this.crowdLevel = level;
     if (!this.crowdGain) return;
+    // Do not fight a running roar / "ooh" envelope.
+    if (this.ctx.currentTime < this.crowdHold) return;
     this.crowdGain.gain.setTargetAtTime(level, this.ctx.currentTime, time);
   }
 
@@ -103,10 +106,11 @@ export class Audio {
     if (!this.ensure() || !this.throttle('kick', 40)) return;
     const c = this.ctx;
     const t = c.currentTime;
-    const p = Math.min(1, power / 16);
+    const p = Math.min(1, power / 13);
+    const vary = 0.94 + Math.random() * 0.12;
     const o = c.createOscillator();
     o.type = 'sine';
-    o.frequency.setValueAtTime(kind === 'pass' ? 190 : 150 + p * 40, t);
+    o.frequency.setValueAtTime((kind === 'pass' ? 190 : 140 + p * 50) * vary, t);
     o.frequency.exponentialRampToValueAtTime(48, t + 0.12);
     const g = c.createGain();
     this.env(g, t, 0.004, 0.35 + p * 0.5, 0.16);
@@ -116,14 +120,14 @@ export class Audio {
     const n = this.noiseSrc();
     const f = c.createBiquadFilter();
     f.type = 'bandpass';
-    f.frequency.value = 1200 + p * 1800;
+    f.frequency.value = (1200 + p * 1800) * vary;
     f.Q.value = 1.2;
     const ng = c.createGain();
     this.env(ng, t, 0.002, 0.15 + p * 0.3, 0.06);
     n.connect(f).connect(ng).connect(this.master);
     n.start(t);
     n.stop(t + 0.12);
-    if (p > 0.8 && kind === 'shot') this.whoosh(0.25);
+    if (p > 0.92 && kind === 'shot') this.whoosh(0.18);
   }
 
   whoosh(v = 0.2) {
@@ -143,15 +147,16 @@ export class Audio {
     n.stop(t + 0.4);
   }
 
-  touch() {
-    if (!this.ensure() || !this.throttle('touch', 90)) return;
+  touch(v = 3) {
+    if (!this.ensure() || !this.throttle('touch', 80)) return;
     const c = this.ctx;
     const t = c.currentTime;
+    const k = Math.min(1, v / 7);
     const o = c.createOscillator();
-    o.frequency.setValueAtTime(220, t);
-    o.frequency.exponentialRampToValueAtTime(90, t + 0.06);
+    o.frequency.setValueAtTime(200 + k * 60 + Math.random() * 30, t);
+    o.frequency.exponentialRampToValueAtTime(85, t + 0.06);
     const g = c.createGain();
-    this.env(g, t, 0.003, 0.16, 0.07);
+    this.env(g, t, 0.003, 0.06 + k * 0.18, 0.07);
     o.connect(g).connect(this.master);
     o.start(t);
     o.stop(t + 0.12);
@@ -292,6 +297,7 @@ export class Audio {
   crowdOoh() {
     if (!this.crowdGain) return;
     const t = this.ctx.currentTime;
+    this.crowdHold = t + 1.6;
     this.crowdGain.gain.cancelScheduledValues(t);
     this.crowdGain.gain.setTargetAtTime(this.crowdLevel + 0.25, t, 0.08);
     this.crowdGain.gain.setTargetAtTime(this.crowdLevel, t + 0.8, 0.6);
@@ -305,6 +311,7 @@ export class Audio {
     const t = c.currentTime;
     this.whistle('short');
     if (this.crowdGain) {
+      this.crowdHold = t + 4.2;
       this.crowdGain.gain.cancelScheduledValues(t);
       this.crowdGain.gain.setTargetAtTime(0.75, t, 0.25);
       this.crowdGain.gain.setTargetAtTime(this.crowdLevel, t + 3.2, 1.2);

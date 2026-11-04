@@ -14,6 +14,21 @@ import { RoomScreen } from './ui/room.js';
 import { Modals, statsTablesHtml } from './ui/modals.js';
 import { DEFAULT_SETTINGS, KITS } from '../shared/constants.js';
 
+// Per-tab identity (survives refresh, not shared between tabs) so a reconnect resumes the player.
+function sessionToken() {
+  const key = 'futbol-arena-session';
+  try {
+    let t = sessionStorage.getItem(key);
+    if (!t) {
+      t = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+      sessionStorage.setItem(key, t);
+    }
+    return t;
+  } catch {
+    return Array.from({ length: 24 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
+  }
+}
+
 class App {
   constructor() {
     this.prefs = loadPrefs();
@@ -32,7 +47,8 @@ class App {
     document.body.classList.toggle('touch-ui', !!this.touch);
     if (this.touch) this.touch.setLook(this.prefs.touchAlpha, this.prefs.touchSize);
     this.net = new Net();
-    this.net.hello = () => ({ t: 'hello', name: this.prefs.name, number: this.prefs.number });
+    this.token = sessionToken();
+    this.net.hello = () => ({ t: 'hello', name: this.prefs.name, number: this.prefs.number, token: this.token });
 
     this.hud = new Hud(this);
     this.modals = new Modals(this);
@@ -70,7 +86,7 @@ class App {
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
-    this.net.connect();
+    this.ensureUniqueToken().then(() => this.net.connect());
   }
 
   // ---------------------------------------------------------------------------
@@ -106,7 +122,43 @@ class App {
     this.prefs.name = name;
     this.prefs.number = number;
     this.savePrefs();
-    if (changed) this.net.send({ t: 'profile', name, number });
+    this.home.syncProfile();
+    if (!changed) return;
+    this.net.send({ t: 'profile', name, number });
+    // Practice runs locally: update our own label right away.
+    const s = this.session;
+    if (s && s.mode === 'practice') {
+      const m = s.meta.get(s.myId);
+      if (m) {
+        m.name = name;
+        m.number = number;
+      }
+    }
+  }
+
+  /** A duplicated tab copies sessionStorage; make sure no other open tab uses our token. */
+  ensureUniqueToken() {
+    if (typeof BroadcastChannel !== 'function') return Promise.resolve();
+    const ch = new BroadcastChannel('futbol-arena-tabs');
+    this.tabChannel = ch;
+    ch.onmessage = (e) => {
+      const d = e.data || {};
+      if (d.q === this.token) ch.postMessage({ dup: d.q });
+      if (d.dup === this.token && this.checkingToken) {
+        try {
+          sessionStorage.removeItem('futbol-arena-session');
+        } catch {
+          /* ignore */
+        }
+        this.token = sessionToken();
+      }
+    };
+    this.checkingToken = true;
+    ch.postMessage({ q: this.token });
+    return new Promise((r) => setTimeout(() => {
+      this.checkingToken = false;
+      r();
+    }, 150));
   }
 
   // ---------------------------------------------------------------------------
@@ -123,6 +175,10 @@ class App {
     if (!game) this.input.releaseAll();
     if (this.touch) this.touch.show(game && this.session && this.session.isPlaying());
     if (!game) this.setChat(false);
+  }
+
+  isPaused() {
+    return modalOpen();
   }
 
   canControl() {
@@ -211,8 +267,8 @@ class App {
     this.savePrefs();
     const touch = this.touch && matchMedia('(pointer: coarse)').matches;
     this.hud.hints(touch
-      ? ['Sol tarafta parmağınla koş, topa çarparak sür.', 'Topun arkasına geç ve <b>VUR</b> tuşuna bas!']
-      : ['<kbd>W A S D</kbd> veya ok tuşlarıyla koş, topa çarparak sür.', 'Topun arkasına geç ve <kbd>Space</kbd> ile vur!']);
+      ? ['Sol tarafta parmağınla koş, topa çarparak sür.', 'Topun önündeki oklar vuruş yönünü gösterir — <b>VUR</b> tuşuna bas!']
+      : ['<kbd>W A S D</kbd> veya ok tuşlarıyla koş, topa çarparak sür.', 'Topun önündeki oklar vuruş yönünü gösterir — <kbd>Space</kbd> ile vur!', 'Menü (<kbd>Esc</kbd>) antrenmanda oyunu duraklatır.']);
   }
 
   backHome() {
@@ -412,6 +468,10 @@ class App {
       if (e.pointerType !== 'mouse' && this.session && this.session.replay) this.session.skipReplay();
     });
     document.addEventListener('fullscreenchange', () => setTimeout(() => this.renderer.resize(), 50));
+    // Soft click for every button in the menus.
+    document.addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('.btn, .seg button, .kit-swatch, .toggle, .icon-btn')) this.audio.ui();
+    });
     // Keep keyboard focus on the game after clicking HUD buttons (Space must not re-click them).
     document.addEventListener('click', (e) => {
       const b = e.target.closest && e.target.closest('.hud button');

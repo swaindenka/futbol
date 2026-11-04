@@ -47,9 +47,11 @@ export const B = {
 // Kick tuning (single button: kick the ball away from the player)
 export const K = {
   REACH: 5, // extra reach beyond contact distance
-  POWER: 10.5,
+  POWER: 11.5,
   CARRY: 0.4, // share of the player's velocity added to the kick
   KICK_CD: 8,
+  CONTROL: 0.14, // close-control blend per tick (0 = pure push, 1 = glued)
+  CONTROL_REL: 3.5, // only for balls moving slowly relative to the player
 };
 
 export const BTN = {

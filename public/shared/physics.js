@@ -11,6 +11,8 @@ import { clamp, turnToward } from './util.js';
 const CONTACT = P.R + B.R;
 const REACH = CONTACT + K.REACH;
 const OWN_RANGE = CONTACT + 6;
+// Corners are rounded like pool-table cushions so the ball can never get pinned there.
+const CORNER_R = 64;
 // Players may step slightly past the lines so a ball stuck on the boards can be won back.
 const EDGE = 12;
 
@@ -26,13 +28,17 @@ export function makeField(key) {
     gd: GOAL_DEPTH,
     bar: CROSSBAR_Z,
     cr: Math.round(f.h * 0.135),
+    rc: CORNER_R, // rounded corner cushions
   };
 }
 
 export function makeBall() {
   // z stays 0 (no lofted balls) but is kept for the renderer.
-  // lk / lkt / lka: last kicker, the tick of that kick and the kicker's assist candidate.
-  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, owner: -1, last: -1, prev: -1, lt: -1, lk: -1, lkt: -1, lka: -1 };
+  // tk / tkt / tka: per team, the last player to touch the ball, when, and their assist candidate.
+  return {
+    x: 0, y: 0, z: 0, vx: 0, vy: 0, owner: -1, last: -1, prev: -1, lt: -1,
+    tk: [-1, -1], tkt: [-1, -1], tka: [-1, -1],
+  };
 }
 
 export function makeInput(team = 0) {
@@ -137,8 +143,10 @@ export function removePlayer(s, id) {
   if (b.owner === id) b.owner = -1;
   if (b.last === id) b.last = -1;
   if (b.prev === id) b.prev = -1;
-  if (b.lk === id) b.lk = -1;
-  if (b.lka === id) b.lka = -1;
+  for (let t = 0; t < 2; t++) {
+    if (b.tk[t] === id) b.tk[t] = -1;
+    if (b.tka[t] === id) b.tka[t] = -1;
+  }
   return p;
 }
 
@@ -158,8 +166,9 @@ export function resetKickoff(s) {
   b.vx = b.vy = 0;
   b.owner = -1;
   b.prev = -1;
-  b.lk = -1;
-  b.lka = -1;
+  b.tk = [-1, -1];
+  b.tkt = [-1, -1];
+  b.tka = [-1, -1];
   s.kt = 0;
 }
 
@@ -177,6 +186,9 @@ function touch(s, p) {
     b.last = p.id;
   }
   b.lt = p.team;
+  b.tk[p.team] = p.id;
+  b.tkt[p.team] = s.tick;
+  b.tka[p.team] = b.prev;
   if (s.phase === PHASE.KICKOFF) s.kt = 1;
 }
 
@@ -252,12 +264,27 @@ function kicks(s, ev) {
     p.ct = 0;
     p.kcd = K.KICK_CD;
     touch(s, p);
-    b.lk = p.id;
-    b.lkt = s.tick;
-    b.lka = b.prev;
     const v = Math.round(Math.hypot(vx, vy) * 10) / 10;
     ev.push({ e: 'kick', p: p.id, v, a: Math.round(Math.atan2(vy, vx) * 100) / 100 });
   }
+}
+
+/**
+ * Light close control: while the ball rests against a player's feet and nobody else is
+ * contesting it, its velocity drifts toward the player's, so the ball follows turns
+ * instead of rolling off. It is not a magnet: fast balls and contested balls are untouched.
+ */
+function closeControl(s, p, d) {
+  const b = s.ball;
+  if (d > CONTACT + 6 || p.kcd > 0 || s.phase === PHASE.COUNTDOWN) return;
+  const rvx = b.vx - p.vx;
+  const rvy = b.vy - p.vy;
+  if (rvx * rvx + rvy * rvy > K.CONTROL_REL * K.CONTROL_REL) return;
+  for (const q of s.players) {
+    if (q !== p && q.team !== p.team && Math.hypot(b.x - q.x, b.y - q.y) < CONTACT + 8) return;
+  }
+  b.vx -= rvx * K.CONTROL;
+  b.vy -= rvy * K.CONTROL;
 }
 
 /** Track who is closest to the ball ("owner") for bots, HUD and stats. */
@@ -276,6 +303,7 @@ function ownership(s, ev) {
     b.owner = -1;
     return;
   }
+  closeControl(s, best, bestD);
   if (b.owner !== best.id) {
     // Being near the ball is not a touch: only real contact (collision / kick) credits a player.
     b.owner = best.id;
@@ -283,10 +311,39 @@ function ownership(s, ev) {
   }
 }
 
+/** Keeps a circle of radius `r` inside the rounded corner arcs. Returns impact speed or 0. */
+function cornerArc(f, o, r, e) {
+  const rc = f.rc;
+  const cx = f.hw - rc;
+  const cy = f.hh - rc;
+  const ax = Math.abs(o.x);
+  const ay = Math.abs(o.y);
+  if (ax <= cx || ay <= cy) return 0;
+  const sx = Math.sign(o.x);
+  const sy = Math.sign(o.y);
+  const dx = ax - cx;
+  const dy = ay - cy;
+  const d = Math.hypot(dx, dy);
+  const lim = rc - r;
+  if (d <= lim) return 0;
+  const nx = (dx / d) * sx;
+  const ny = (dy / d) * sy;
+  o.x = sx * cx + nx * lim;
+  o.y = sy * cy + ny * lim;
+  const vn = o.vx * nx + o.vy * ny;
+  if (vn > 0) {
+    o.vx -= (1 + e) * vn * nx;
+    o.vy -= (1 + e) * vn * ny;
+  }
+  return vn;
+}
+
 function ballWalls(s, ev) {
   const b = s.ball;
   const f = s.field;
   const r = B.R;
+  const hit = cornerArc(f, b, r, B.WALL_E);
+  if (hit > 1.5) ev.push({ e: 'wall', v: Math.round(hit * 10) / 10 });
   const inGoalBox = Math.abs(b.x) > f.hw && Math.abs(b.y) < f.gh;
 
   if (inGoalBox) {
@@ -411,12 +468,12 @@ function collidePlayers(s) {
   }
 }
 
-function collideBallPlayers(s) {
+function collideBallPlayers(s, ev) {
   // Two passes so a ball squeezed between two players is resolved, never left inside one.
-  for (let pass = 0; pass < 2; pass++) collideBallPlayersOnce(s, pass === 0);
+  for (let pass = 0; pass < 2; pass++) collideBallPlayersOnce(s, pass === 0, ev);
 }
 
-function collideBallPlayersOnce(s, bounce) {
+function collideBallPlayersOnce(s, bounce, ev) {
   const b = s.ball;
   const min = CONTACT;
   for (const p of s.players) {
@@ -443,6 +500,7 @@ function collideBallPlayersOnce(s, bounce) {
       p.vx += vn * nx * 0.08;
       p.vy += vn * ny * 0.08;
       if (vn < -0.6) touch(s, p);
+      if (bounce && vn < -1.6) ev.push({ e: 'tap', p: p.id, v: Math.round(-vn * 10) / 10 });
     }
   }
 }
@@ -455,6 +513,7 @@ function playerBounds(s) {
   const maxY = f.hh - P.R + EDGE;
   const postMin = P.R + POST_R;
   for (const p of s.players) {
+    cornerArc(f, p, P.R - EDGE, 0);
     if (p.x < minX) {
       p.x = minX;
       if (p.vx < 0) p.vx = 0;
@@ -524,14 +583,11 @@ function checkGoal(s, ev) {
   let assist = b.prev;
   const scorer = findPlayer(s, scorerId);
   let own = scorer ? (scorer.team !== team ? 1 : 0) : 0;
-  if (own) {
-    // A shot that merely deflects off a defender still belongs to the shooter.
-    const kicker = findPlayer(s, b.lk);
-    if (kicker && kicker.team === team && s.tick - b.lkt < 150) {
-      scorerId = kicker.id;
-      assist = b.lka;
-      own = 0;
-    }
+  if (own && b.tk[team] >= 0 && s.tick - b.tkt[team] < 150 && findPlayer(s, b.tk[team])) {
+    // A shot (or dribble) that deflects in off a defender belongs to the attacker.
+    scorerId = b.tk[team];
+    assist = b.tka[team];
+    own = 0;
   }
   ev.push({
     e: 'goal',
@@ -625,7 +681,7 @@ export function step(s, auth) {
   kicks(s, ev);
   updateBall(s, ev);
   collidePlayers(s);
-  collideBallPlayers(s);
+  collideBallPlayers(s, ev);
   ballWalls(s, ev);
   playerBounds(s);
   ownership(s, ev);

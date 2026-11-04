@@ -6,6 +6,7 @@ import {
 } from '../public/shared/constants.js';
 
 const CHAT_MAX = 160;
+const EMPTY_GRACE_MS = 30_000;
 
 export class Room {
   constructor(lobby, code, { name, isPublic }) {
@@ -97,6 +98,10 @@ export class Room {
 
   join(client) {
     if (this.full) return 'Oda dolu.';
+    if (this.emptyTimer) {
+      clearTimeout(this.emptyTimer);
+      this.emptyTimer = null;
+    }
     client.room = this;
     client.team = -1;
     this.clients.set(client.id, client);
@@ -114,14 +119,30 @@ export class Room {
     return null;
   }
 
-  leave(client) {
+  /**
+   * @param {object} client
+   * @param {boolean} [dropped] connection lost (not an explicit leave): keep an empty room
+   *   alive for a short while so the player can come back after a refresh.
+   */
+  leave(client, dropped = false) {
     if (!this.clients.has(client.id)) return;
     this.clients.delete(client.id);
     client.room = null;
     if (this.match) this.match.removeHuman(client.id);
     client.team = -1;
     if (!this.clients.size) {
-      this.destroy();
+      if (!dropped) {
+        this.destroy();
+        return;
+      }
+      if (this.match) {
+        this.match.stop();
+        this.match = null;
+      }
+      this.emptyTimer = setTimeout(() => {
+        if (!this.clients.size) this.destroy();
+      }, EMPTY_GRACE_MS);
+      this.lobby.roomsChanged();
       return;
     }
     if (this.hostId === client.id) {
@@ -133,6 +154,7 @@ export class Room {
   }
 
   destroy() {
+    if (this.emptyTimer) clearTimeout(this.emptyTimer);
     if (this.match) this.match.stop();
     this.match = null;
     clearInterval(this.pingTimer);
@@ -297,7 +319,8 @@ export class Room {
     }
   }
 
-  onProfileChange(client) {
+  onProfileChange(client, oldName) {
+    if (oldName && oldName !== client.name) this.system(`${oldName} artık ${client.name}.`);
     if (this.match) {
       this.match.updateHumanMeta(client);
       this.broadcastRoster();

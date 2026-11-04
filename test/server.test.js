@@ -18,7 +18,7 @@ after(async () => {
   await new Promise((r) => srv.server.close(r));
 });
 
-function client(name) {
+function client(name, token) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url);
     const c = { ws, msgs: [], waiters: [], id: -1 };
@@ -45,7 +45,7 @@ function client(name) {
       }
     });
     ws.on('open', async () => {
-      c.send({ t: 'hello', name, number: 7 });
+      c.send({ t: 'hello', name, number: 7, token });
       const w = await c.wait((m) => m.t === 'welcome');
       c.id = w.id;
       resolve(c);
@@ -173,4 +173,73 @@ test('quick join creates or reuses a public lobby room', async () => {
   assert.equal(chat.text, 'merhaba');
   a.ws.close();
   b.ws.close();
+});
+
+test('reconnecting tab replaces its stale connection and keeps team, id and bot count', async () => {
+  const a = await client('Host', 'tok-host-0001');
+  a.send({ t: 'create', name: 'Resume', isPublic: false });
+  const j = await a.wait((m) => m.t === 'joined');
+  const code = j.room.code;
+  const b = await client('Guest', 'tok-guest-0001');
+  b.send({ t: 'join', code });
+  await b.wait((m) => m.t === 'joined');
+  a.send({ t: 'settings', settings: { teamSize: 2 } });
+  await a.wait((m) => m.t === 'room' && m.room.settings.teamSize === 2);
+  a.send({ t: 'start' });
+  const start = await a.wait((m) => m.t === 'start');
+  assert.equal(start.roster.filter((r) => r.bot).length, 2);
+  const guestTeam = start.roster.find((r) => r.id === b.id).team;
+
+  // Same tab reconnects while the old socket is still open (phone app switch).
+  const closed = new Promise((r) => b.ws.once('close', r));
+  const b2 = await client('Guest', 'tok-guest-0001');
+  await closed;
+  assert.equal(b2.id, b.id, 'same identity');
+  const room = srv.lobby.rooms.get(code);
+  await new Promise((r) => setTimeout(r, 100));
+  const roster = room.match.roster();
+  assert.equal(roster.length, 4, 'no ghost, no missing bot');
+  assert.equal(roster.filter((r) => r.bot).length, 2);
+  assert.equal(roster.find((r) => r.id === b.id).team, guestTeam, 'back on the same team');
+
+  // Host refreshes: gets host back.
+  const ac = new Promise((r) => a.ws.once('close', r));
+  a.ws.close();
+  await ac;
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(room.hostId, b.id, 'host migrated while away');
+  const a2 = await client('Host', 'tok-host-0001');
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(room.hostId, a2.id);
+  assert.equal(a2.id, a.id);
+  a2.send({ t: 'stop' });
+  await a2.wait((m) => m.t === 'end', 5000);
+  a2.ws.close();
+  b2.ws.close();
+});
+
+test('a solo player refreshing does not lose the room', async () => {
+  const a = await client('Solo', 'tok-solo-00001');
+  a.send({ t: 'create', name: 'Solo', isPublic: true });
+  const j = await a.wait((m) => m.t === 'joined');
+  const closed = new Promise((r) => a.ws.once('close', r));
+  a.ws.close();
+  await closed;
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(srv.lobby.rooms.has(j.room.code), 'room kept for a moment');
+  const a2 = await client('Solo', 'tok-solo-00001');
+  const back = await a2.wait((m) => m.t === 'joined');
+  assert.equal(back.room.code, j.room.code);
+  a2.ws.close();
+});
+
+test('profile changes in the lobby reach everyone', async () => {
+  const a = await client('Eski', 'tok-prof-00001');
+  a.send({ t: 'create', name: 'Profil', isPublic: false });
+  await a.wait((m) => m.t === 'joined');
+  a.send({ t: 'profile', name: '  Yeni   Ad  ', number: 23 });
+  const r = await a.wait((m) => m.t === 'room' && m.room.players.some((p) => p.name === 'Yeni Ad'));
+  assert.equal(r.room.players.find((p) => p.id === a.id).number, 23);
+  a.send({ t: 'leave' });
+  a.ws.close();
 });

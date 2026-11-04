@@ -10,7 +10,11 @@ oyuncular forma desenli pullar olarak görünür.
 - Sadece **koş** ve **vur**: topa koşarak çarparsan top önünde ilerler (top sürme)
 - **Vur** tuşu topu senden uzağa, topun bulunduğu yöne doğru sert gönderir; nişan almak için topun arkasına geçersin
 - Tuş basılıyken oyuncunun etrafında beyaz halka çıkar, top değdiği an vuruş olur (gelen topa direkt vuruş)
-- Saha kenarları banttır, top duvarlardan seker; oyuncular top bant dibinde sıkışmasın diye çizginin biraz dışına çıkabilir
+- Top yakınındayken önünde çıkan oklar vuruş yönünü gösterir
+- Hafif top kontrolü: top ayağa yapışmaz ama dönüşlerde oyuncuyu hafifçe takip eder
+- Saha kenarları banttır, top duvarlardan seker; köşeler bilardo masası gibi yuvarlatılmıştır, top köşede sıkışmaz
+- Karşılıklı aynı anda vuruşta top bloke olur, asla oyuncunun içinden geçmez
+- Her golden sonra kısa kutlama ve **3-2-1 geri sayım**; antrenmanda menü açıkken oyun duraklar
 - Santra kuralları, **altın gol**, gol limiti, süre seçimi
 - 3 zorlukta **botlar** (kaleci, top kovalayan, destek rolleri) boş yerleri doldurur
 - Maç sonu istatistikleri: gol, asist, şut, topa sahip olma, oyuncu puanı ve **MVP**
@@ -21,10 +25,11 @@ oyuncular forma desenli pullar olarak görünür.
 - 3D kale, file **dalgalanması**, yuvarlanan top deseni, sert şutlarda ateş izi, parçacıklar, ekran sarsıntısı
 - Gol bandı, konfeti ve **ağır çekim gol tekrarı**
 - 10 forma seti (çizgili, yatay çizgili, kuşaklı, yarım), takma ad + forma numarası
-- Ses dosyası olmadan WebAudio ile sentezlenen sesler: vuruş, direk, file, düdük, tribün uğultusu
+- Ses dosyası olmadan WebAudio ile sentezlenen sesler: vuruş ve dokunuş, direk, file, düdük; top kaleye yaklaştıkça yükselen, kıl payı kaçan şutta "ooh" diyen tribün
 - Emote'lar, oyun içi sohbet, skor tablosu (Tab), mini harita, kamera modları (otomatik / tüm saha / takip), kamera açısı ayarı
 - Klavye (WASD veya ok tuşları), **gamepad**, **mobil dokunmatik joystick + tek VUR tuşu** (saydamlık ve boyut ayarlı)
 - Oda kodu ve **davet linki** (`?oda=KOD`), açık oda listesi, hızlı maç, sunucusuz **antrenman** modu
+- Oda lobisinde ve maç menüsünde **Profilim**: takma ad ve forma numarası her an değiştirilebilir
 
 ## Çalıştırma
 
@@ -45,7 +50,7 @@ Geliştirme için: `npm run dev` (dosya değişince yeniden başlar), testler i�
 | Eylem | Klavye / Fare | Gamepad | Mobil |
 | --- | --- | --- | --- |
 | Koş | `W A S D` veya ok tuşları | Sol çubuk | Sol taraf: joystick |
-| Vur | `Space`, `X`, `Shift` veya tık | Herhangi bir tuş | Sağdaki **VUR** |
+| Vur | `Space`, `X` veya tık | Herhangi bir tuş | Sağdaki **VUR** |
 | Sohbet / Emote | `Enter` / `1`–`6` | | 💬 butonu |
 | Skor tablosu, kamera, ses, menü | `Tab`, `F`, `M`, `Esc` | | Üst butonlar |
 
@@ -82,5 +87,6 @@ test/              node:test ile fizik ve uçtan uca sunucu testleri
   sunucudan gelen her durumda onaylanmamış girdileri yeniden oynatır. Hatalar görsel olarak yumuşatılır;
   böylece yüksek pingte bile kendi oyuncun gecikmesiz hareket eder.
 - Oyuncu maç ortasında çıkarsa yerine bot geçer; oda sahibi ayrılırsa sahiplik devredilir.
+- **Yeniden bağlanma:** her sekmenin bir oturum anahtarı vardır. Sayfa yenilenirse ya da telefonda uygulamadan çıkılıp dönülürse eski bağlantı hemen kapatılır, oyuncu aynı kimlik, takım ve istatistiklerle (oda sahibiyse sahiplikle) geri döner. Tek kişilik boş oda 30 saniye korunur.
 
 **Hata ayıklama parametreleri:** `?lag=150` (yapay gecikme, ms), `?server=wss://...` (farklı sunucu), `?oda=KOD` (odaya doğrudan katıl).

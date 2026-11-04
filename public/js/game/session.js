@@ -126,6 +126,7 @@ export class Session {
 
   destroy() {
     this.destroyed = true;
+    this.app.audio.setCrowd(0.12, 0.5);
     if (this.replayTimer) clearTimeout(this.replayTimer);
   }
 
@@ -203,7 +204,7 @@ export class Session {
     if (s.tick <= this.effectsTick) return;
     this.effectsTick = s.tick;
     for (const e of ev) {
-      if (e.p === this.myId && (e.e === 'kick' || e.e === 'trap')) this.handleEvent(e);
+      if (e.p === this.myId && (e.e === 'kick' || e.e === 'tap')) this.handleEvent(e);
     }
   }
 
@@ -276,7 +277,7 @@ export class Session {
     if (reset) this.savePrev();
 
     for (const e of ns.events) {
-      if (e.p === this.myId && (e.e === 'kick' || e.e === 'trap')) continue;
+      if (e.p === this.myId && (e.e === 'kick' || e.e === 'tap')) continue;
       this.handleEvent(e);
     }
     if (this.replay && ns.phase !== PHASE.GOAL) this.stopReplay();
@@ -300,15 +301,19 @@ export class Session {
         const a = Number.isFinite(e.a) ? e.a : Math.atan2(b.vy, b.vx);
         if (audio) audio.kick(e.v, 'shot');
         fx.kick(b.x, b.y, e.v, a);
-        if (e.v > 11.5) fx.addShake(2.5);
+        if (e.v > 12.5) fx.addShake(3);
         break;
       }
-      case 'trap':
-        if (audio) audio.touch();
+      case 'tap':
+        if (audio) audio.touch(e.v);
         break;
-      case 'wall':
+      case 'wall': {
         if (audio) audio.wall(e.v);
+        // Shot that just missed the goal: the crowd gasps.
+        const f = this.state.field;
+        if (audio && e.v > 6 && Math.abs(b.x) > f.hw - 30 && Math.abs(b.y) < f.gh + 70) audio.crowdOoh();
         break;
+      }
       case 'post':
         if (audio) audio.post();
         fx.sparks(b.x, b.y, 10);
@@ -492,7 +497,10 @@ export class Session {
     this.lastFrame = now;
     if (dt > 0.25) dt = 0.25;
     if (dt < 0) dt = 0;
-    this.acc += dt * 1000;
+    // Practice is offline: freeze the match while a menu / dialog is open.
+    this.paused = this.mode === 'practice' && this.app.isPaused();
+    if (this.paused) this.acc = 0;
+    else this.acc += dt * 1000;
     let n = 0;
     while (this.acc >= TICK_MS && n < 10) {
       this.tick();
@@ -534,8 +542,16 @@ export class Session {
     });
     if (!demo) this.app.hud.update(this, view);
 
-    // Countdown beeps
+    // Crowd swells as the ball nears a goal.
     const s = this.state;
+    if (!demo && (this.crowdTimer = (this.crowdTimer || 0) - dt) <= 0) {
+      this.crowdTimer = 0.3;
+      const f = s.field;
+      const near = s.phase === PHASE.PLAY ? Math.max(0, 1 - (f.hw - Math.abs(view.ball.x)) / (f.w * 0.3)) : 0;
+      this.app.audio.setCrowd(0.1 + near * near * 0.16, 0.5);
+    }
+
+    // Countdown beeps
     if (!demo && s.phase === PHASE.COUNTDOWN) {
       const c = Math.ceil(s.pt / TIMING.COUNTDOWN_STEP);
       if (c !== this.lastCount && c > 0 && c <= 3) this.app.audio.beep(false);

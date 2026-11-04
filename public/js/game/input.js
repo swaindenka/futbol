@@ -7,7 +7,8 @@ const KEYS = {
   down: ['KeyS', 'ArrowDown'],
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
-  kick: ['Space', 'KeyX', 'ShiftLeft', 'ShiftRight', 'KeyK'],
+  // Not Shift: five quick presses open the Windows Sticky Keys dialog mid-match.
+  kick: ['Space', 'KeyX', 'KeyK', 'KeyL'],
 };
 const GAME_CODES = new Set(Object.values(KEYS).flat());
 

@@ -47,7 +47,7 @@ export class Effects {
         c: Math.random() < 0.5 ? '#6fd36b' : '#2e7d32',
       });
     }
-    if (power > 11) this.ring(x, y, power > 14 ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)', 10, 26 + power * 2);
+    if (power > 12) this.ring(x, y, power > 12.8 ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)', 10, 26 + power * 2);
   }
 
   dust(x, y, dirA) {
