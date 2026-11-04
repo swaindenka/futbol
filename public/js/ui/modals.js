@@ -11,7 +11,7 @@ export function statsTablesHtml(players, kits, myId, { rating = true } = {}) {
     const rows = players.filter((p) => p.team === t);
     const body = rows.map((p) => `
       <tr class="${p.id === myId ? 'me' : ''}">
-        <td><span class="pn">${esc(p.name)}${p.bot ? ' <em>bot</em>' : ''}</span></td>
+        <td><span class="pn">${esc(p.name)}${p.bot ? ' <em>bot</em>' : ''}${p.ownGoals ? ` <em title="Kendi kalesine">${p.ownGoals} k.k.</em>` : ''}</span></td>
         <td>${p.goals}</td><td>${p.assists}</td><td>${p.shots}</td>
         ${rating && p.rating !== undefined ? `<td><span class="rating ${p.rating >= 8 ? 'hi' : ''}">${p.rating.toFixed(1)}</span></td>` : ''}
       </tr>`).join('');
