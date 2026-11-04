@@ -1,7 +1,7 @@
 // In-game heads-up display (DOM overlay).
 
 import { $, el, esc, fmtTime } from './dom.js';
-import { PHASE, EMOTES } from '../../shared/constants.js';
+import { PHASE, EMOTES, TIMING } from '../../shared/constants.js';
 
 const upper = (s) => String(s).toLocaleUpperCase('tr');
 
@@ -87,7 +87,7 @@ export class Hud {
       this.tag.textContent = v;
     });
 
-    const cd = s.phase === PHASE.COUNTDOWN ? Math.ceil(s.pt / 60) : 0;
+    const cd = s.phase === PHASE.COUNTDOWN ? Math.ceil(s.pt / TIMING.COUNTDOWN_STEP) : 0;
     this.set('cd', cd, (v) => {
       this.countdownEl.innerHTML = v > 0 && v <= 3 ? `<span>${v}</span>` : '';
     });
@@ -143,7 +143,7 @@ export class Hud {
     });
     this.goalEl.innerHTML = '';
     this.goalEl.append(node);
-    setTimeout(() => node.remove(), 2400);
+    setTimeout(() => node.remove(), 1700);
     const target = team === 0 ? this.s0 : this.s1;
     target.classList.remove('bump');
     void target.offsetWidth;

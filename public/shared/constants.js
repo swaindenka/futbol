@@ -65,10 +65,11 @@ export const PHASE = {
 };
 
 export const TIMING = {
-  COUNTDOWN: 180,
+  COUNTDOWN_STEP: 42, // ticks per number of the 3-2-1 countdown
+  COUNTDOWN: 126,
   KICKOFF_MAX: 600,
-  GOAL_PAUSE: 200,
-  GOAL_PAUSE_REPLAY: 360,
+  GOAL_PAUSE: 100, // short celebration, then reset + 3-2-1
+  GOAL_PAUSE_REPLAY: 330,
   END_HOLD: 150,
 };
 
@@ -94,7 +95,7 @@ export const DEFAULT_SETTINGS = {
   field: 'auto',
   goldenGoal: true,
   scoreLimit: 0,
-  replays: true,
+  replays: false,
   kits: [0, 4],
 };
 

@@ -6,7 +6,7 @@ import {
 import { encodeSnapshot, decodeSnapshot } from '../public/shared/protocol.js';
 import { BotBrain } from '../public/shared/bot.js';
 import { MatchStats } from '../public/shared/stats.js';
-import { PHASE, BTN, B, P } from '../public/shared/constants.js';
+import { PHASE, BTN, B, P, TIMING } from '../public/shared/constants.js';
 
 const rules = { duration: 120, goldenGoal: true, scoreLimit: 0, replays: false };
 
@@ -99,6 +99,47 @@ test('kick is armed while held and fires when the ball arrives', () => {
   const events = run(s, 40, { 1: { mx: 0, my: 0, a: 0, b: BTN.KICK } });
   assert.ok(events.some((e) => e.e === 'kick' && e.p === 1), 'one-timer');
   assert.ok(s.ball.vx > 0, 'ball sent back');
+});
+
+test('simultaneous kicks never let the ball pass through a player', () => {
+  let overlaps = 0;
+  for (let off = -12; off <= 12; off += 2) {
+    for (let delay = 0; delay < 6; delay++) {
+      const s = setup();
+      s.phase = PHASE.PLAY;
+      const a = findPlayer(s, 1);
+      const c = findPlayer(s, 2);
+      a.x = -80;
+      a.y = 0;
+      c.x = 80;
+      c.y = off;
+      s.ball.x = 0;
+      s.ball.y = 0;
+      for (let t = 0; t < 40; t++) {
+        a.in = { mx: 1, my: 0, a: 0, b: t >= delay ? BTN.KICK : 0 };
+        c.in = { mx: -1, my: 0, a: Math.PI, b: BTN.KICK };
+        step(s, true);
+        for (const p of s.players) if (Math.hypot(s.ball.x - p.x, s.ball.y - p.y) < P.R + B.R - 1) overlaps++;
+      }
+    }
+  }
+  assert.equal(overlaps, 0);
+});
+
+test('after a goal the teams reset and a 3-2-1 countdown runs before the kickoff', () => {
+  const s = setup();
+  s.phase = PHASE.PLAY;
+  for (const p of s.players) p.y = 250;
+  s.ball.x = s.field.hw - 5;
+  s.ball.y = 0;
+  s.ball.vx = 8;
+  const ev = run(s, 10);
+  assert.ok(ev.some((e) => e.e === 'goal'));
+  run(s, TIMING.GOAL_PAUSE);
+  assert.equal(s.phase, PHASE.COUNTDOWN);
+  assert.equal(s.ball.x, 0);
+  run(s, TIMING.COUNTDOWN);
+  assert.equal(s.phase, PHASE.KICKOFF);
 });
 
 test('ball bounces off the boards like a cushion', () => {

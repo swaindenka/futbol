@@ -177,7 +177,7 @@ class App {
     const kits = [0, 4];
     this.setSession(new Session(this, {
       mode: 'practice',
-      settings: { ...DEFAULT_SETTINGS, duration: opts.duration || 180, goldenGoal: true, replays: true, kits },
+      settings: { ...DEFAULT_SETTINGS, duration: opts.duration || 180, goldenGoal: true, kits },
       teamSize: opts.teamSize || 3,
       level: opts.level ?? 1,
     }));

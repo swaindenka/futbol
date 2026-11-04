@@ -175,21 +175,12 @@ function touch(s, p) {
   if (s.phase === PHASE.KICKOFF) s.kt = 1;
 }
 
-/** Kick the ball straight away from the player's centre. */
-function kick(s, p, ev) {
-  const b = s.ball;
+/** Velocity a kick gives the ball: straight away from the player's centre. */
+function kickImpulse(p, b) {
   const dx = b.x - p.x;
   const dy = b.y - p.y;
   const d = Math.hypot(dx, dy) || 1;
-  const nx = dx / d;
-  const ny = dy / d;
-  b.vx = nx * K.POWER + p.vx * K.CARRY;
-  b.vy = ny * K.POWER + p.vy * K.CARRY;
-  b.owner = -1;
-  p.ct = 0;
-  p.kcd = K.KICK_CD;
-  touch(s, p);
-  ev.push({ e: 'kick', p: p.id, v: Math.round(Math.hypot(b.vx, b.vy) * 10) / 10, a: Math.round(Math.atan2(ny, nx) * 100) / 100 });
+  return { x: (dx / d) * K.POWER + p.vx * K.CARRY, y: (dy / d) * K.POWER + p.vy * K.CARRY };
 }
 
 function updatePlayer(s, p, frozen) {
@@ -233,8 +224,31 @@ function updatePlayer(s, p, frozen) {
 function kicks(s, ev) {
   if (s.phase === PHASE.COUNTDOWN || s.phase === PHASE.ENDED) return;
   const b = s.ball;
-  for (const p of s.players) {
-    if (p.ct && p.kcd === 0 && inReach(p, b)) kick(s, p, ev);
+  const kickers = [];
+  for (const p of s.players) if (p.ct && p.kcd === 0 && inReach(p, b)) kickers.push(p);
+  if (!kickers.length) return;
+  // Simultaneous kicks are added together, so a 50-50 clash blocks instead of
+  // letting the last kicker win and the ball tunnel through the other player.
+  let vx = 0;
+  let vy = 0;
+  for (const p of kickers) {
+    const imp = kickImpulse(p, b);
+    vx += imp.x;
+    vy += imp.y;
+  }
+  if (kickers.length > 1) {
+    vx *= 0.6;
+    vy *= 0.6;
+  }
+  b.vx = vx;
+  b.vy = vy;
+  b.owner = -1;
+  for (const p of kickers) {
+    p.ct = 0;
+    p.kcd = K.KICK_CD;
+    touch(s, p);
+    const v = Math.round(Math.hypot(vx, vy) * 10) / 10;
+    ev.push({ e: 'kick', p: p.id, v, a: Math.round(Math.atan2(vy, vx) * 100) / 100 });
   }
 }
 
@@ -390,10 +404,14 @@ function collidePlayers(s) {
 }
 
 function collideBallPlayers(s) {
+  // Two passes so a ball squeezed between two players is resolved, never left inside one.
+  for (let pass = 0; pass < 2; pass++) collideBallPlayersOnce(s, pass === 0);
+}
+
+function collideBallPlayersOnce(s, bounce) {
   const b = s.ball;
   const min = CONTACT;
   for (const p of s.players) {
-    if (p.kcd > 0 && b.last === p.id) continue;
     const dx = b.x - p.x;
     const dy = b.y - p.y;
     const d2 = dx * dx + dy * dy;
@@ -401,12 +419,19 @@ function collideBallPlayers(s) {
     const d = Math.sqrt(d2) || 0.001;
     const nx = dx / d;
     const ny = dy / d;
-    b.x = p.x + nx * min;
-    b.y = p.y + ny * min;
+    if (bounce) {
+      b.x = p.x + nx * min;
+      b.y = p.y + ny * min;
+    } else {
+      // Ball is wedged (e.g. between two players): move the player instead.
+      p.x = b.x - nx * min;
+      p.y = b.y - ny * min;
+    }
     const vn = (b.vx - p.vx) * nx + (b.vy - p.vy) * ny;
     if (vn < 0) {
-      b.vx -= (1 + B.PLAYER_E) * vn * nx;
-      b.vy -= (1 + B.PLAYER_E) * vn * ny;
+      const e = bounce ? B.PLAYER_E : 0;
+      b.vx -= (1 + e) * vn * nx;
+      b.vy -= (1 + e) * vn * ny;
       p.vx += vn * nx * 0.08;
       p.vy += vn * ny * 0.08;
       if (vn < -0.6) touch(s, p);
@@ -552,8 +577,8 @@ function phaseLogic(s, auth, ev) {
         if (shouldEnd(s)) endMatch(s, ev);
         else {
           resetKickoff(s);
-          s.phase = PHASE.KICKOFF;
-          s.pt = 0;
+          s.phase = PHASE.COUNTDOWN;
+          s.pt = TIMING.COUNTDOWN;
           ev.push({ e: 'kickoff', t: s.ko });
         }
       }

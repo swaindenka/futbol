@@ -10,7 +10,7 @@ import { decodeSnapshot } from '../../shared/protocol.js';
 import { BotBrain } from '../../shared/bot.js';
 import { MatchStats } from '../../shared/stats.js';
 import {
-  KITS, PHASE, TICK_MS, EMOTES, BOT_NAMES, fieldForTeamSize,
+  KITS, PHASE, TICK_MS, TIMING, EMOTES, BOT_NAMES, fieldForTeamSize,
 } from '../../shared/constants.js';
 import { lerp } from '../../shared/util.js';
 import { Effects } from './effects.js';
@@ -220,7 +220,7 @@ export class Session {
 
     const ns = decodeSnapshot(d, this.base);
     this.recordFrame(ns);
-    const reset = (prevPhase === PHASE.GOAL || prevPhase === PHASE.COUNTDOWN) && ns.phase === PHASE.KICKOFF;
+    const reset = prevPhase === PHASE.GOAL && ns.phase !== PHASE.GOAL;
     this.state = ns;
 
     while (this.history.length && this.history[0].s <= ack) this.history.shift();
@@ -279,7 +279,7 @@ export class Session {
       if (e.p === this.myId && (e.e === 'kick' || e.e === 'trap')) continue;
       this.handleEvent(e);
     }
-    if (this.replay && ns.phase === PHASE.KICKOFF) this.stopReplay();
+    if (this.replay && ns.phase !== PHASE.GOAL) this.stopReplay();
   }
 
   // ---------------------------------------------------------------------------
@@ -323,11 +323,10 @@ export class Session {
         this.onGoal(e);
         break;
       case 'whistle':
-        if (audio) audio.whistle('long');
-        if (hud) hud.banner('BAŞLA!', '', 1200);
+        if (audio) audio.whistle(this.goalCount ? 'short' : 'long');
+        if (hud) hud.banner('BAŞLA!', '', 1000);
         break;
       case 'kickoff':
-        if (audio) audio.whistle('short');
         if (this.replay) this.stopReplay();
         break;
       case 'overtime':
@@ -538,7 +537,7 @@ export class Session {
     // Countdown beeps
     const s = this.state;
     if (!demo && s.phase === PHASE.COUNTDOWN) {
-      const c = Math.ceil(s.pt / 60);
+      const c = Math.ceil(s.pt / TIMING.COUNTDOWN_STEP);
       if (c !== this.lastCount && c > 0 && c <= 3) this.app.audio.beep(false);
       this.lastCount = c;
     } else this.lastCount = -1;
