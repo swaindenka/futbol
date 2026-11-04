@@ -288,3 +288,41 @@ test('bots play a full 4v4 match without errors and score', () => {
   assert.equal(sum.players.length, 8);
   assert.equal(sum.possession[0] + sum.possession[1], 100);
 });
+
+test('bots move smoothly (no constant direction reversals)', () => {
+  let ticks = 0;
+  let reversals = 0;
+  for (const [size, field] of [[2, 'small'], [3, 'medium'], [4, 'large']]) {
+    const s = makeState(field, { ...rules, duration: 60, goldenGoal: false });
+    const brains = new Map();
+    let id = 1;
+    for (let t = 0; t < 2; t++) {
+      for (let i = 0; i < size; i++) {
+        addPlayer(s, id, t);
+        brains.set(id, new BotBrain(id, 1));
+        id++;
+      }
+    }
+    resetKickoff(s);
+    const prev = new Map();
+    while (s.phase !== PHASE.ENDED) {
+      for (const p of s.players) p.in = brains.get(p.id).update(s);
+      step(s, true);
+      if (s.phase !== PHASE.PLAY) continue;
+      for (const p of s.players) {
+        const m = Math.hypot(p.in.mx, p.in.my);
+        const a = Math.atan2(p.in.my, p.in.mx);
+        const q = prev.get(p.id);
+        if (q && m > 0.2 && q.m > 0.2) {
+          ticks++;
+          let d = Math.abs(a - q.a);
+          if (d > Math.PI) d = 2 * Math.PI - d;
+          if (d > 2.4) reversals++;
+        }
+        prev.set(p.id, { a, m });
+      }
+    }
+  }
+  const perSecond = (reversals / ticks) * 60;
+  assert.ok(perSecond < 0.5, `reversals per bot-second: ${perSecond.toFixed(2)} (about 1.3-1.9 before the fix)`);
+});

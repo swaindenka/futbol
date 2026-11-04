@@ -231,7 +231,8 @@ function updatePlayer(s, p, frozen) {
   if (moving) {
     p.vx += (mx * max - p.vx) * P.ACCEL;
     p.vy += (my * max - p.vy) * P.ACCEL;
-    p.facing = turnToward(p.facing, Math.atan2(my, mx), P.TURN);
+    // Only clear input turns the body, so tiny corrections do not make players twitch.
+    if (len > 0.3) p.facing = turnToward(p.facing, Math.atan2(my, mx), P.TURN);
   } else {
     p.vx *= P.DECEL;
     p.vy *= P.DECEL;
