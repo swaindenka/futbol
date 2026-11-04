@@ -3,11 +3,7 @@
 import { BTN } from '../../shared/constants.js';
 
 const BUTTONS = [
-  { id: 'shoot', label: 'ŞUT', bit: BTN.SHOOT, cls: 'big' },
-  { id: 'pass', label: 'PAS', bit: BTN.PASS, cls: '' },
-  { id: 'lob', label: 'AŞIRT', bit: BTN.LOB, cls: '' },
-  { id: 'tackle', label: 'KAY', bit: BTN.TACKLE, cls: '' },
-  { id: 'sprint', label: 'DEPAR', bit: BTN.SPRINT, cls: 'small' },
+  { id: 'kick', label: 'VUR', bit: BTN.KICK, cls: 'big' },
 ];
 
 export class TouchControls {
@@ -82,8 +78,6 @@ export class TouchControls {
     const m = Math.min(1, d / max);
     this.state.mx = d > 6 ? (dx / Math.max(d, 1)) * m : 0;
     this.state.my = d > 6 ? (dy / Math.max(d, 1)) * m : 0;
-    if (d > max * 0.9) this.state.b |= BTN.SPRINT;
-    else if (!this.root.querySelector('[data-id="sprint"].on')) this.state.b &= ~BTN.SPRINT;
   }
 
   stickEnd(e) {
@@ -92,7 +86,6 @@ export class TouchControls {
     this.stickEl.hidden = true;
     this.state.mx = 0;
     this.state.my = 0;
-    if (!this.root.querySelector('[data-id="sprint"].on')) this.state.b &= ~BTN.SPRINT;
   }
 
   setLook(alpha, size) {

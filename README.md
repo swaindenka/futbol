@@ -6,18 +6,14 @@ oyuncular forma desenli pullar olarak görünür.
 
 ## Özellikler
 
-**Oynanış**
-- Gerçek zamanlı hareket, **depar** (dayanıklılık barı ile)
-- **Şarjlı şut**: tuşu basılı tuttukça güç halkası dolar, bırakınca vurur; kısa dokunuşla hafif itme
-- **Falso**: şut anında yana koşuyorsan top kavis alır
-- **Aşırtma (lob)**: top oyuncuların üstünden geçer, düşeceği yer halka ile gösterilir
-- **Akıllı pas**: nişan yönündeki en uygun takım arkadaşına, koşu yönünü hesaba katarak
-- **Top sürme**: topu ayağında tutma, rakibe gövde ile karşı koyma
-- **Kayarak müdahale**: topa sahip rakibe temiz müdahale; topsuz oyuncuya kayarsan **faul** ve sen yere düşersin
-- **Bilardo kılavuzu**: şut/aşırtma doldururken yörünge ve banttan sekmeler önizlenir (kapatılabilir)
+**Oynanış (sade, tek tuş)**
+- Sadece **koş** ve **vur**: topa koşarak çarparsan top önünde ilerler (top sürme)
+- **Vur** tuşu topu senden uzağa, topun bulunduğu yöne doğru sert gönderir; nişan almak için topun arkasına geçersin
+- Tuş basılıyken oyuncunun etrafında beyaz halka çıkar, top değdiği an vuruş olur (gelen topa direkt vuruş)
+- Saha kenarları banttır, top duvarlardan seker; oyuncular top bant dibinde sıkışmasın diye çizginin biraz dışına çıkabilir
 - Santra kuralları, **altın gol**, gol limiti, süre seçimi
-- 3 zorlukta **botlar** (kaleci, top kovalayan, destek/markaj rolleri) boş yerleri doldurur
-- Maç sonu istatistikleri: gol, asist, şut, isabetli pas, top kapma, topa sahip olma, oyuncu puanı ve **MVP**
+- 3 zorlukta **botlar** (kaleci, top kovalayan, destek rolleri) boş yerleri doldurur
+- Maç sonu istatistikleri: gol, asist, şut, topa sahip olma, oyuncu puanı ve **MVP**
 
 **Görsel / UX**
 - Gece maçı stadyumu: biçilmiş çim, tribünlerde animasyonlu taraftarlar, ışık parlamaları, flaşlar
@@ -27,7 +23,7 @@ oyuncular forma desenli pullar olarak görünür.
 - 10 forma seti (çizgili, yatay çizgili, kuşaklı, yarım), takma ad + forma numarası
 - Ses dosyası olmadan WebAudio ile sentezlenen sesler: vuruş, direk, file, düdük, tribün uğultusu
 - Emote'lar, oyun içi sohbet, skor tablosu (Tab), mini harita, kamera modları (otomatik / tüm saha / takip), kamera açısı ayarı
-- Klavye (WASD ve ok tuşu düzenleri), **fare ile nişan**, **gamepad**, **mobil dokunmatik joystick**
+- Klavye (WASD veya ok tuşları), **gamepad**, **mobil dokunmatik joystick + tek VUR tuşu** (saydamlık ve boyut ayarlı)
 - Oda kodu ve **davet linki** (`?oda=KOD`), açık oda listesi, hızlı maç, sunucusuz **antrenman** modu
 
 ## Çalıştırma
@@ -46,17 +42,12 @@ Geliştirme için: `npm run dev` (dosya değişince yeniden başlar), testler i�
 
 ## Kontroller
 
-| Eylem | Klavye / Fare | Gamepad |
-| --- | --- | --- |
-| Hareket | `W A S D` veya ok tuşları | Sol çubuk |
-| Depar | `Shift` | LB / LT |
-| Şut (basılı tut → bırak) | `Space`, `X` veya sol tık | A / RT |
-| Pas | `E` veya `C` | X / RB |
-| Aşırtma | `R`, `V` veya sağ tık | Y |
-| Kayarak müdahale | `Q` veya `Z` | B |
-| Nişan | Fare imleci (ayarlardan yön tuşlarına alınabilir) | Sağ çubuk |
-| Sohbet / Emote | `Enter` / `1`–`6` | |
-| Skor tablosu, kamera, ses, menü | `Tab`, `F`, `M`, `Esc` | |
+| Eylem | Klavye / Fare | Gamepad | Mobil |
+| --- | --- | --- | --- |
+| Koş | `W A S D` veya ok tuşları | Sol çubuk | Sol taraf: joystick |
+| Vur | `Space`, `X`, `Shift` veya tık | Herhangi bir tuş | Sağdaki **VUR** |
+| Sohbet / Emote | `Enter` / `1`–`6` | | 💬 butonu |
+| Skor tablosu, kamera, ses, menü | `Tab`, `F`, `M`, `Esc` | | Üst butonlar |
 
 ## Dağıtım
 

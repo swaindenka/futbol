@@ -37,19 +37,17 @@ export class MatchStats {
       switch (ev.e) {
         case 'kick': {
           if (!st) break;
-          if (ev.k === 'pass') {
-            st.passes++;
-            this.pendingPass = { from: ev.p, team: st.team };
-            break;
-          }
           this.pendingPass = null;
           const p = findPlayer(s, ev.p);
           if (!p) break;
           const dir = p.team === 0 ? 1 : -1;
           const toward = Math.cos(ev.a) * dir;
           const distGoal = Math.abs(dir * s.field.hw - p.x);
-          if (ev.k === 'shot' && ev.v >= 9 && toward > 0.45 && distGoal < s.field.w * 0.6) st.shots++;
-          else if (ev.k === 'lob' && toward > 0.45 && distGoal < s.field.w * 0.35) st.shots++;
+          if (toward > 0.45 && distGoal < s.field.w * 0.45) st.shots++;
+          else {
+            st.passes++;
+            this.pendingPass = { from: ev.p, team: st.team };
+          }
           break;
         }
         case 'trap': {

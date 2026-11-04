@@ -26,28 +26,11 @@ export const POST_R = 6;
 // Player tuning
 export const P = {
   R: 17, // radius
-  H: 44, // height a ball must clear to fly over a player
-  SPEED: 3.1,
-  SPRINT: 1.45,
-  CHARGE_SLOW: 0.72,
-  DRIBBLE_SLOW: 0.94,
+  SPEED: 3.3,
+  KICK_SLOW: 0.85, // slower while the kick button is held
   ACCEL: 0.17,
   DECEL: 0.8,
-  TURN: 0.22,
-  TURN_CHARGE: 0.4,
-  STAMINA: 100,
-  SPRINT_COST: 0.6,
-  REGEN: 0.3,
-  RECOVER_AT: 30,
-  SLIDE_TICKS: 18,
-  SLIDE_SPEED: 7.6,
-  SLIDE_DAMP: 0.925,
-  SLIDE_RECOVER: 12,
-  TACKLE_CD: 84,
-  STUN_TICKS: 54,
-  FOUL_STUN_VICTIM: 30,
-  FOUL_STUN_TACKLER: 60,
-  FOUL_BALL_DIST: 70,
+  TURN: 0.25,
   BUMP_E: 0.3,
 };
 
@@ -55,48 +38,22 @@ export const P = {
 export const B = {
   R: 8.5,
   FRICTION: 0.988,
-  AIR_DRAG: 0.996,
-  GRAVITY: 0.32,
-  BOUNCE: 0.5,
   WALL_E: 0.72,
   POST_E: 0.75,
   NET_E: 0.15,
-  PLAYER_E: 0.35,
-  HEAD_E: 0.25,
-  SPIN_GROUND: 0.96,
-  SPIN_AIR: 0.985,
-  MAX_SPIN: 0.0085,
+  PLAYER_E: 0.5,
 };
 
-// Kicking / control tuning
+// Kick tuning (single button: kick the ball away from the player)
 export const K = {
-  RANGE: 11, // extra reach beyond contact distance
-  MAX_Z: 30,
-  CHARGE_TICKS: 45,
-  SHOT_MIN: 5,
-  SHOT_MAX: 16.5,
-  LOB_H_MIN: 4,
-  LOB_H_MAX: 9.5,
-  LOB_Z_MIN: 4.2,
-  LOB_Z_MAX: 7.8,
-  PASS_ARRIVE: 3.6,
-  PASS_MIN: 4.5,
-  PASS_MAX: 13,
-  PASS_CONE: 1.05,
-  KICK_CD: 14,
-  CONTROL_RANGE: 7,
-  CONTROL_MAX_REL: 7.5,
-  CONTROL_MAX_Z: 14,
-  CONTROL_PULL: 0.22,
-  CONTROL_BLEND: 0.42,
+  REACH: 5, // extra reach beyond contact distance
+  POWER: 10.5,
+  CARRY: 0.4, // share of the player's velocity added to the kick
+  KICK_CD: 8,
 };
 
 export const BTN = {
-  SPRINT: 1,
-  SHOOT: 2,
-  PASS: 4,
-  LOB: 8,
-  TACKLE: 16,
+  KICK: 2,
 };
 
 export const PHASE = {

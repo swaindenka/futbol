@@ -5,7 +5,6 @@ import { round } from './util.js';
 
 const r2 = (v) => round(v, 100);
 const r3 = (v) => round(v, 1000);
-const r5 = (v) => round(v, 100000);
 
 export function encodeSnapshot(s, events) {
   const b = s.ball;
@@ -19,12 +18,11 @@ export function encodeSnapshot(s, events) {
     s.ko,
     s.ot,
     s.kt,
-    [r2(b.x), r2(b.y), r2(b.z), r3(b.vx), r3(b.vy), r3(b.vz), r5(b.spin), b.owner, b.last, b.prev, b.lt],
+    [r2(b.x), r2(b.y), r3(b.vx), r3(b.vy), b.owner, b.last, b.prev, b.lt],
     s.players.map((p) => [
       p.id, p.team, p.slot,
       r2(p.x), r2(p.y), r3(p.vx), r3(p.vy), r3(p.facing),
-      r2(p.stamina), p.exh, p.charge, p.ct, p.pb,
-      p.slide, r3(p.sdx), r3(p.sdy), p.rec, p.stun, p.tcd, p.kcd,
+      p.ct, p.pb, p.kcd,
       r2(p.in.mx), r2(p.in.my), r3(p.in.a), p.in.b,
     ]),
     events || [],
@@ -42,15 +40,12 @@ export function decodeSnapshot(d, base) {
   const ball = makeBall();
   ball.x = bd[0];
   ball.y = bd[1];
-  ball.z = bd[2];
-  ball.vx = bd[3];
-  ball.vy = bd[4];
-  ball.vz = bd[5];
-  ball.spin = bd[6];
-  ball.owner = bd[7];
-  ball.last = bd[8];
-  ball.prev = bd[9];
-  ball.lt = bd[10];
+  ball.vx = bd[2];
+  ball.vy = bd[3];
+  ball.owner = bd[4];
+  ball.last = bd[5];
+  ball.prev = bd[6];
+  ball.lt = bd[7];
   const players = d[10].map((a) => ({
     id: a[0],
     team: a[1],
@@ -60,19 +55,10 @@ export function decodeSnapshot(d, base) {
     vx: a[5],
     vy: a[6],
     facing: a[7],
-    stamina: a[8],
-    exh: a[9],
-    charge: a[10],
-    ct: a[11],
-    pb: a[12],
-    slide: a[13],
-    sdx: a[14],
-    sdy: a[15],
-    rec: a[16],
-    stun: a[17],
-    tcd: a[18],
-    kcd: a[19],
-    in: { mx: a[20], my: a[21], a: a[22], b: a[23] },
+    ct: a[8],
+    pb: a[9],
+    kcd: a[10],
+    in: { mx: a[11], my: a[12], a: a[13], b: a[14] },
   }));
   return {
     tick: d[0],
