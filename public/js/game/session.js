@@ -17,6 +17,7 @@ import { Effects } from './effects.js';
 
 const SNAP_PLAYER = 90;
 const SNAP_BALL = 170;
+const REMOTE_DAMP = 0.4;
 const REPLAY_BEFORE = 110;
 const REPLAY_AFTER = 24;
 const REPLAY_SPEED = 0.6;
@@ -221,6 +222,12 @@ export class Session {
 
     const ns = decodeSnapshot(d, this.base);
     this.recordFrame(ns);
+    // Other players are extrapolated with a softened copy of their last input: when they
+    // turn on the server we then lag slightly instead of overshooting and snapping back.
+    for (const p of ns.players) {
+      if (p.id === this.myId) continue;
+      p.in = { mx: p.in.mx * REMOTE_DAMP, my: p.in.my * REMOTE_DAMP, a: p.in.a, b: p.in.b };
+    }
     const reset = prevPhase === PHASE.GOAL && ns.phase !== PHASE.GOAL;
     this.state = ns;
 

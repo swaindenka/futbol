@@ -16,6 +16,8 @@ const LEVELS = [
 export const BOT_LEVEL_NAMES = LEVELS.map((l) => l.name);
 
 const CONTACT = PHYS.CONTACT;
+// Last chaser per team, per match state, so teammates do not keep swapping the role.
+const chasers = new WeakMap();
 const REACH = PHYS.REACH;
 
 export class BotBrain {
@@ -30,6 +32,13 @@ export class BotBrain {
     this.lastX = 0;
     this.lastY = 0;
     this.still = 0;
+    this.loopSide = 0;
+    this.looping = false;
+    this.steady = false;
+    this.pmx = 0;
+    this.pmy = 0;
+    this.sx = null;
+    this.sy = 0;
   }
 
   /**
@@ -43,23 +52,34 @@ export class BotBrain {
       this.hold = 0;
       return o;
     }
-    if (--this.cool <= 0) {
-      this.cool = this.cfg.react + Math.floor(this.rng() * 4);
-      this.err = (this.rng() * 2 - 1) * this.cfg.err;
-    }
+    if (--this.cool <= 0) this.cool = this.cfg.react + Math.floor(this.rng() * 4);
     if (this.rest > 0) this.rest--;
 
     const ctx = this.context(s, me, humans);
+    this.steady = false;
     if (s.phase === PHASE.GOAL) this.moveTo(o, me, ctx.home.x, ctx.home.y);
     else if (ctx.isKeeper) this.keeper(s, me, ctx, o);
     else if (ctx.isChaser && !ctx.kickoffWait) this.attack(s, me, ctx, o);
     else this.support(s, me, ctx, o);
 
+    // Off-ball positioning does not need instant reactions: give the steering some inertia
+    // so supporting players glide instead of twitching between nearby targets.
+    if (this.steady) {
+      o.mx = this.pmx + (o.mx - this.pmx) * 0.2;
+      o.my = this.pmy + (o.my - this.pmy) * 0.2;
+      if (Math.hypot(o.mx, o.my) < 0.06) o.mx = o.my = 0;
+    }
+    this.pmx = o.mx;
+    this.pmy = o.my;
+
     // Kick button handling: hold for a few ticks, then rest so the next press is a new edge.
     if (this.hold > 0) {
       this.hold--;
       o.b |= BTN.KICK;
-      if (this.hold === 0) this.rest = 4;
+      if (this.hold === 0) {
+        this.rest = 4;
+        this.err = (this.rng() * 2 - 1) * this.cfg.err; // new aim error for the next shot
+      }
     }
     return o;
   }
@@ -73,6 +93,11 @@ export class BotBrain {
     const n = mates.length;
     const keeperP = n >= 3 ? mates[n - 1] : null;
 
+    let memo = chasers.get(s);
+    if (!memo) {
+      memo = [-1, -1];
+      chasers.set(s, memo);
+    }
     let chaser = null;
     let best = Infinity;
     for (const m of mates) {
@@ -80,11 +105,13 @@ export class BotBrain {
       let d = Math.hypot(b.x - m.x, b.y - m.y);
       if ((b.x - m.x) * dir > 0) d -= 25; // goal-side of the ball is better
       if (humans && humans.has(m.id)) d -= 45;
+      if (m.id === memo[me.team]) d -= 40; // keep the current chaser unless clearly worse
       if (d < best) {
         best = d;
         chaser = m;
       }
     }
+    if (chaser) memo[me.team] = chaser.id;
     const outfield = mates.filter((m) => m !== keeperP);
     const rank = Math.max(0, outfield.indexOf(me));
     const isKeeper = keeperP === me;
@@ -100,14 +127,37 @@ export class BotBrain {
     };
   }
 
+  /**
+   * Arrival steering: aim from where we will be in a few ticks (current velocity), so the
+   * bot brakes before the target instead of overshooting and reversing back and forth.
+   */
   moveTo(o, me, tx, ty, fast = true) {
     const dx = tx - me.x;
     const dy = ty - me.y;
     const d = Math.hypot(dx, dy);
-    if (d < 3) return;
-    const mag = clamp(d / (fast ? 22 : 36), 0, 1) * this.cfg.speed;
-    o.mx = (dx / d) * mag;
-    o.my = (dy / d) * mag;
+    const sp = Math.hypot(me.vx, me.vy);
+    if (d < (fast ? 3 : 7) && sp < 1.2) return; // close enough: stand still
+    const look = fast ? 4 : 6;
+    const px = tx - (me.x + me.vx * look);
+    const py = ty - (me.y + me.vy * look);
+    if (px * dx + py * dy <= 0) return; // we will reach it anyway: coast and let friction brake
+    const pd = Math.hypot(px, py);
+    if (pd < 1) return;
+    const mag = clamp(pd / (fast ? 22 : 36), 0, 1) * this.cfg.speed;
+    o.mx = (px / pd) * mag;
+    o.my = (py / pd) * mag;
+  }
+
+  /** Low-pass filter for positional targets so they do not twitch with every ball wiggle. */
+  smooth(tx, ty, k) {
+    if (this.sx === null || Math.hypot(tx - this.sx, ty - this.sy) > 160) {
+      this.sx = tx;
+      this.sy = ty;
+    } else {
+      this.sx += (tx - this.sx) * k;
+      this.sy += (ty - this.sy) * k;
+    }
+    return [this.sx, this.sy];
   }
 
   /** Where the ball will roughly be when we can reach it. */
@@ -135,12 +185,20 @@ export class BotBrain {
     const d = Math.hypot(ip.x - me.x, ip.y - me.y);
     let tx;
     let ty;
-    if (rel > -CONTACT * 0.6 && d < 120) {
+    // Hysteresis between pushing the ball and looping around it: without it a bot pushing
+    // the ball sits right on the threshold and flips direction several times a second.
+    if (this.looping) this.looping = rel > -CONTACT * 0.7 && d < 140;
+    else this.looping = rel > -CONTACT * 0.2 && d < 120;
+    if (this.looping) {
       // Wrong side of the ball: loop around it.
-      const side = (me.x - ip.x) * -ay + (me.y - ip.y) * ax >= 0 ? 1 : -1;
+      const cross = (me.x - ip.x) * -ay + (me.y - ip.y) * ax;
+      // Pick a side to go around and stick to it unless we are clearly on the other one.
+      if (!this.loopSide || cross * this.loopSide < -12) this.loopSide = cross >= 0 ? 1 : -1;
+      const side = this.loopSide;
       tx = ip.x - ax * (CONTACT + 14) - ay * side * (CONTACT + 12);
       ty = ip.y - ay * (CONTACT + 14) + ax * side * (CONTACT + 12);
     } else if (d > 140) {
+      this.loopSide = 0;
       tx = ip.x - ax * CONTACT;
       ty = ip.y - ay * CONTACT;
     } else {
@@ -266,10 +324,12 @@ export class BotBrain {
       if (t > 0 && t < 90) ty = clamp(b.y + b.vy * t, -f.gh + 4, f.gh - 4);
     }
     const tx = homeX + dir * clamp((f.w * 0.5 - dOwn) * 0.05, 0, 26);
-    this.moveTo(o, me, tx, ty, false);
+    const [sx, sy] = this.smooth(tx, ty, 0.3);
+    this.moveTo(o, me, sx, sy, false);
   }
 
   support(s, me, ctx, o) {
+    this.steady = true;
     const { f, b, dir, opps, outfield, rank, mates, ownX } = ctx;
     const m = Math.max(1, outfield.length);
     const lanes = m === 1 ? [0] : m === 2 ? [-0.42, 0.42] : m === 3 ? [-0.55, 0, 0.55] : [-0.6, -0.2, 0.2, 0.6];
@@ -312,6 +372,7 @@ export class BotBrain {
         ty += (dy / d) * (90 - d) * 0.6;
       }
     }
-    this.moveTo(o, me, clamp(tx, -f.hw + 30, f.hw - 30), clamp(ty, -f.hh + 30, f.hh - 30), false);
+    const [sx, sy] = this.smooth(clamp(tx, -f.hw + 30, f.hw - 30), clamp(ty, -f.hh + 30, f.hh - 30), 0.08);
+    this.moveTo(o, me, sx, sy, false);
   }
 }
