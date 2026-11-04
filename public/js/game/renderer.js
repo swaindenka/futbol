@@ -125,6 +125,7 @@ export class Renderer {
     const { ctx } = this;
     const f = view.field;
     const hq = this.quality !== 'low';
+    this.drawCornerGround(f);
 
     if (view.phase === PHASE.KICKOFF && view.kits) {
       const col = view.kits[view.ko].primary;
@@ -191,12 +192,44 @@ export class Renderer {
         ctx.stroke();
       }
       if (p.ct) {
-        // Kick armed: bright ring like a striker's boot ready.
-        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        // Kick armed: bright pulsing ring.
+        const pulse = 0.75 + 0.25 * Math.sin(this.time * 18);
+        ctx.strokeStyle = `rgba(255,255,255,${pulse})`;
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(p.x, p.y, P.R + 5, 0, TAU);
         ctx.stroke();
+      }
+    }
+
+    // Kick direction hint for the local player: the ball always flies from body to ball.
+    const me = view.players.find((p) => p.me);
+    if (me && view.phase !== PHASE.GOAL) {
+      const dx = b.x - me.x;
+      const dy = b.y - me.y;
+      const d = Math.hypot(dx, dy);
+      const near = P.R + B.R + 34;
+      if (d < near && d > 1) {
+        const ux = dx / d;
+        const uy = dy / d;
+        const fade = 1 - Math.max(0, d - (P.R + B.R + 6)) / 28;
+        const a = (me.ct ? 0.85 : 0.45) * Math.max(0, Math.min(1, fade));
+        ctx.strokeStyle = `rgba(255,255,255,${a})`;
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+          const k = B.R + 10 + i * 11;
+          const cx = b.x + ux * k;
+          const cy = b.y + uy * k;
+          ctx.globalAlpha = 1 - i * 0.28;
+          ctx.beginPath();
+          ctx.moveTo(cx - ux * 4 - uy * 4.5, cy - uy * 4 + ux * 4.5);
+          ctx.lineTo(cx, cy);
+          ctx.lineTo(cx - ux * 4 + uy * 4.5, cy - uy * 4 - ux * 4.5);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.lineCap = 'butt';
       }
     }
   }
@@ -288,9 +321,74 @@ export class Renderer {
         this.box(x0, x0 + T, -hh, -gh, RAIL_H, top, '#0b101b', null);
         this.box(x0, x0 + T, gh, hh, RAIL_H, top, '#0b101b', null);
       }
+      this.drawCorner(f, -1, -1, 1);
+      this.drawCorner(f, 1, -1, 1);
     } else {
       this.box(-hw - T, hw + T, hh, hh + T, RAIL_H, top, '#0b101b', { fx, offset: 400 }, 0.55);
+      this.drawCorner(f, -1, 1, 0.55);
+      this.drawCorner(f, 1, 1, 0.55);
     }
+  }
+
+  /** Points of a rounded corner cushion (world), from the side wall to the end wall. */
+  cornerArc(f, sx, sy, n = 12) {
+    const cx = sx * (f.hw - f.rc);
+    const cy = sy * (f.hh - f.rc);
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = (i / n) * (Math.PI / 2);
+      pts.push([cx + sx * f.rc * Math.cos(t), cy + sy * f.rc * Math.sin(t)]);
+    }
+    return pts;
+  }
+
+  /** Ground part of the corner cushions, drawn under everything (world transform). */
+  drawCornerGround(f) {
+    const { ctx } = this;
+    if (!f.rc) return;
+    ctx.fillStyle = '#0b101b';
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        const pts = this.cornerArc(f, sx, sy);
+        ctx.beginPath();
+        ctx.moveTo(sx * f.hw, sy * f.hh);
+        for (const [x, y] of pts) ctx.lineTo(x, y);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  /** Raised cushion in a corner: front face (far side only) and top. */
+  drawCorner(f, sx, sy, alpha) {
+    if (!f.rc) return;
+    const { ctx, cam } = this;
+    const arc = this.cornerArc(f, sx, sy);
+    const low = arc.map(([x, y]) => cam.project(x, y, 0));
+    const high = arc.map(([x, y]) => cam.project(x, y, RAIL_H));
+    ctx.globalAlpha = alpha;
+    if (sy < 0) {
+      ctx.beginPath();
+      low.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      for (let i = high.length - 1; i >= 0; i--) ctx.lineTo(high[i][0], high[i][1]);
+      ctx.closePath();
+      ctx.fillStyle = '#0d1424';
+      ctx.fill();
+    }
+    const corner = cam.project(sx * (f.hw + RAIL_T), sy * (f.hh + RAIL_T), RAIL_H);
+    ctx.beginPath();
+    high.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.lineTo(corner[0], corner[1]);
+    ctx.closePath();
+    ctx.fillStyle = '#1b2232';
+    ctx.fill();
+    // Cushion edge highlight
+    ctx.strokeStyle = 'rgba(201,247,107,0.55)';
+    ctx.lineWidth = Math.max(1, cam.zoom * 1.6);
+    ctx.beginPath();
+    high.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -578,7 +676,7 @@ export class Renderer {
     const r = B.R * cam.zoom * s;
 
     if (tr.length > 1 && this.quality !== 'low') {
-      const hot = speed > 12.5;
+      const hot = speed > 12.2;
       ctx.lineCap = 'round';
       for (let i = 1; i < tr.length; i++) {
         const t = i / tr.length;
@@ -594,7 +692,7 @@ export class Renderer {
       ctx.lineCap = 'butt';
     }
 
-    if (speed > 12.5) {
+    if (speed > 12.2) {
       const glow = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 2.4);
       glow.addColorStop(0, 'rgba(255,190,90,0.45)');
       glow.addColorStop(1, 'rgba(255,120,40,0)');

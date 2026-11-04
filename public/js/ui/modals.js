@@ -126,7 +126,7 @@ export class Modals {
           <div class="help-section">
             <h3>Oynanış</h3>
             ${item('Hareket', `${k('W', 'A', 'S', 'D')} veya ${k('↑', '←', '↓', '→')}`)}
-            ${item('Vur', `${k('Space')} ${k('X')} ${k('Shift')} veya tık`)}
+            ${item('Vur', `${k('Space')} ${k('X')} veya tık`)}
             ${item('Mobil', 'Sol tarafta joystick, sağda VUR')}
             ${item('Gamepad', 'Sol çubuk ile koş, herhangi bir tuş ile vur')}
           </div>
@@ -145,8 +145,10 @@ export class Modals {
           <ul class="tips">
             <li><b>Topa koşarak çarparsan</b> top önünde ilerler, böylece topu sürersin.</li>
             <li><b>Vur tuşu</b> topu senden uzağa, gövdenin baktığı değil topun bulunduğu yöne doğru sertçe gönderir. Nişan almak için topun arkasına geç.</li>
+            <li>Top yakınındayken önünde çıkan <b>oklar</b> vuruşta topun gideceği yönü gösterir.</li>
             <li>Tuşa basılıyken etrafında beyaz bir halka çıkar; top değdiği anda vuruş olur.</li>
-            <li><b>Kenarlar banttır:</b> top duvarlardan seker, banttan gol atabilirsin.</li>
+            <li>Topla dönerken yavaş dön: top ayağına yapışmaz ama hafifçe seni takip eder.</li>
+            <li><b>Kenarlar banttır:</b> top duvarlardan seker, banttan gol atabilirsin. Köşeler yuvarlak olduğu için top köşede sıkışmaz.</li>
           </ul>
         </div>`,
     });
@@ -160,8 +162,18 @@ export class Modals {
     const room = app.room;
     const host = online && room && room.hostId === app.myId;
     const list = el('div', { class: 'menu-list' });
-    const m = openModal({ id: 'menu', title: online ? (room ? room.name : 'Maç') : 'Antrenman', body: list });
+    const m = openModal({ id: 'menu', title: online ? (room ? room.name : 'Maç') : 'Duraklatıldı', body: list });
     list.append(el('button', { class: 'btn primary', type: 'button', onclick: () => m.close() }, icon('play'), 'Devam et'));
+    if (!online) {
+      list.append(el('button', {
+        class: 'btn',
+        type: 'button',
+        onclick: () => {
+          m.close();
+          app.startPractice(app.prefs.practice || {});
+        },
+      }, icon('refresh'), 'Yeniden başlat'));
+    }
     if (online) {
       const mine = room && room.players.find((p) => p.id === app.myId);
       const teams = el('div', { class: 'menu-teams' });

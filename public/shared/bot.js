@@ -27,6 +27,9 @@ export class BotBrain {
     this.hold = 0;
     this.rest = 0;
     this.err = 0;
+    this.lastX = 0;
+    this.lastY = 0;
+    this.still = 0;
   }
 
   /**
@@ -147,16 +150,44 @@ export class BotBrain {
     }
     const f = s.field;
     const lim = P.R - PHYS.EDGE;
-    this.moveTo(o, me, clamp(tx, -f.hw + lim, f.hw - lim), clamp(ty, -f.hh + lim, f.hh - lim));
-    if (this.hold || this.rest) return;
+    const cx = clamp(tx, -f.hw + lim, f.hw - lim);
+    const cy = clamp(ty, -f.hh + lim, f.hh - lim);
     const b = s.ball;
     const bd = Math.hypot(b.x - me.x, b.y - me.y);
+    // The spot behind the ball is outside the pitch (ball in a corner / on the boards), or we
+    // have not moved for a while: stop lining up and just go at the ball to dig it out.
+    const moved = Math.hypot(me.x - this.lastX, me.y - this.lastY);
+    this.lastX = me.x;
+    this.lastY = me.y;
+    this.still = moved < 0.4 && bd < 90 ? this.still + 1 : 0;
+    const dig = Math.hypot(cx - tx, cy - ty) > 6 || this.still > 30;
+    if (dig) {
+      // Work the ball back toward the middle of the pitch: get on its wall side, then push.
+      const ox = -Math.sign(b.x) * (Math.abs(b.x) > f.hw - 40 ? 1 : 0) + Math.cos(ang) * 0.5;
+      const oy = -Math.sign(b.y) * (Math.abs(b.y) > f.hh - 40 ? 1 : 0);
+      const ol = Math.hypot(ox, oy) || 1;
+      const ux = ox / ol;
+      const uy = oy / ol;
+      const bx = clamp(b.x - ux * (CONTACT - 2), -f.hw + lim, f.hw - lim);
+      const by = clamp(b.y - uy * (CONTACT - 2), -f.hh + lim, f.hh - lim);
+      const behind = (me.x - b.x) * ux + (me.y - b.y) * uy < -4;
+      if (behind) this.moveTo(o, me, b.x + ux * 20, b.y + uy * 20);
+      else this.moveTo(o, me, bx, by);
+    } else this.moveTo(o, me, cx, cy);
+    if (this.hold || this.rest) return;
     if (bd > REACH + 6) return;
     const bodyAng = Math.atan2(b.y - me.y, b.x - me.x);
     const diff = Math.abs(angleDiff(bodyAng, ang));
-    // Ball on the boards: accept any kick that still goes our way (bank it out).
+    const kx = Math.cos(bodyAng);
+    const ky = Math.sin(bodyAng);
+    // Never kick straight into nearby boards: the ball would just bounce back.
+    const intoWall = (Math.abs(b.y) > f.hh - 45 && ky * Math.sign(b.y) > 0.45)
+      || (Math.abs(b.x) > f.hw - 45 && Math.abs(b.y) > f.gh && kx * Math.sign(b.x) > 0.45);
+    if (intoWall) return;
+    // Ball on the boards / in a corner: accept any kick that still goes our way.
     const onBoards = Math.abs(b.y) > f.hh - 30 || Math.abs(b.x) > f.hw - 30;
-    if ((shoot && diff < this.cfg.tol) || (onBoards && diff < 1.1 && Math.cos(bodyAng) * Math.cos(ang) > 0)) this.hold = 6;
+    const ourWay = kx * Math.cos(ang) > 0;
+    if ((shoot && diff < this.cfg.tol) || ((onBoards || dig) && diff < 1.3 && ourWay)) this.hold = 6;
   }
 
   shotAngle(s, ctx) {

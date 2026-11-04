@@ -180,6 +180,37 @@ test('a shot deflected in by a defender is credited to the shooter', () => {
   }
 });
 
+test('rounded corners: a ball pushed into a corner slides back out', () => {
+  const s = setup();
+  s.phase = PHASE.PLAY;
+  const p = findPlayer(s, 1);
+  findPlayer(s, 2).x = 0;
+  const f = s.field;
+  s.ball.x = f.hw - 30;
+  s.ball.y = f.hh - 30;
+  p.x = f.hw - 80;
+  p.y = f.hh - 80;
+  // Keep pushing diagonally into the corner.
+  run(s, 120, { 1: { mx: 0.7, my: 0.7, a: 0, b: 0 } });
+  const inCorner = Math.abs(s.ball.x) > f.hw - 25 && Math.abs(s.ball.y) > f.hh - 25;
+  assert.ok(!inCorner, `ball escaped the corner (${s.ball.x.toFixed(0)}, ${s.ball.y.toFixed(0)})`);
+});
+
+test('close control: the ball follows a gentle turn', () => {
+  const s = setup(1, 'large');
+  s.phase = PHASE.PLAY;
+  const p = findPlayer(s, 1);
+  findPlayer(s, 2).y = 330;
+  p.x = -500;
+  p.y = 0;
+  s.ball.x = -470;
+  s.ball.y = 0;
+  run(s, 100, { 1: { mx: 1, my: 0, a: 0, b: 0 } });
+  run(s, 60, { 1: { mx: 0.92, my: -0.38, a: 0, b: 0 } });
+  const gap = Math.hypot(s.ball.x - p.x, s.ball.y - p.y) - (P.R + B.R);
+  assert.ok(gap < 40, `ball stays with the player after a turn (gap ${gap.toFixed(0)})`);
+});
+
 test('ball bounces off the boards like a cushion', () => {
   const s = setup();
   s.phase = PHASE.PLAY;

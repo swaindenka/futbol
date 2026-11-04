@@ -125,6 +125,10 @@ class App {
     if (!game) this.setChat(false);
   }
 
+  isPaused() {
+    return modalOpen();
+  }
+
   canControl() {
     return this.screen === 'game' && !modalOpen() && !this.chatOpen;
   }
@@ -211,8 +215,8 @@ class App {
     this.savePrefs();
     const touch = this.touch && matchMedia('(pointer: coarse)').matches;
     this.hud.hints(touch
-      ? ['Sol tarafta parmağınla koş, topa çarparak sür.', 'Topun arkasına geç ve <b>VUR</b> tuşuna bas!']
-      : ['<kbd>W A S D</kbd> veya ok tuşlarıyla koş, topa çarparak sür.', 'Topun arkasına geç ve <kbd>Space</kbd> ile vur!']);
+      ? ['Sol tarafta parmağınla koş, topa çarparak sür.', 'Topun önündeki oklar vuruş yönünü gösterir — <b>VUR</b> tuşuna bas!']
+      : ['<kbd>W A S D</kbd> veya ok tuşlarıyla koş, topa çarparak sür.', 'Topun önündeki oklar vuruş yönünü gösterir — <kbd>Space</kbd> ile vur!', 'Menü (<kbd>Esc</kbd>) antrenmanda oyunu duraklatır.']);
   }
 
   backHome() {
@@ -412,6 +416,10 @@ class App {
       if (e.pointerType !== 'mouse' && this.session && this.session.replay) this.session.skipReplay();
     });
     document.addEventListener('fullscreenchange', () => setTimeout(() => this.renderer.resize(), 50));
+    // Soft click for every button in the menus.
+    document.addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('.btn, .seg button, .kit-swatch, .toggle, .icon-btn')) this.audio.ui();
+    });
     // Keep keyboard focus on the game after clicking HUD buttons (Space must not re-click them).
     document.addEventListener('click', (e) => {
       const b = e.target.closest && e.target.closest('.hud button');

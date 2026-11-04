@@ -89,7 +89,10 @@ export class Hud {
 
     const cd = s.phase === PHASE.COUNTDOWN ? Math.ceil(s.pt / TIMING.COUNTDOWN_STEP) : 0;
     this.set('cd', cd, (v) => {
-      this.countdownEl.innerHTML = v > 0 && v <= 3 ? `<span>${v}</span>` : '';
+      if (v > 0 && v <= 3) {
+        const kit = session.kits[s.ko];
+        this.countdownEl.innerHTML = `<span>${v}</span><small style="--k:${kit.primary}">${esc(kit.name)} başlıyor</small>`;
+      } else this.countdownEl.innerHTML = '';
     });
 
     const spectating = session.mode === 'online' && !session.isPlaying() && s.phase !== PHASE.ENDED;
