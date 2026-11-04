@@ -94,6 +94,15 @@ export class Modals {
     const tilt = el('input', { type: 'range', class: 'range', min: 0.55, max: 1, step: 0.01, value: p.tilt });
     tilt.addEventListener('input', () => app.setPref('tilt', +tilt.value));
     const row = (label, ctl) => el('div', { class: 'set-row' }, el('label', { text: label }), ctl);
+    let touchRows = [];
+    if (app.touch) {
+      const ta = el('input', { type: 'range', class: 'range', min: 0.2, max: 1, step: 0.05, value: p.touchAlpha });
+      ta.addEventListener('input', () => app.setPref('touchAlpha', +ta.value));
+      touchRows = [
+        row('Dokunmatik tuş saydamlığı (sol: daha saydam)', ta),
+        row('Dokunmatik tuş boyutu', seg([{ v: 0.82, label: 'Küçük' }, { v: 1, label: 'Orta' }, { v: 1.2, label: 'Büyük' }], p.touchSize, (v) => app.setPref('touchSize', v))),
+      ];
+    }
     openModal({
       id: 'settings',
       title: 'Ayarlar',
@@ -105,7 +114,8 @@ export class Modals {
         row('Kamera', seg([{ v: 'auto', label: 'Otomatik' }, { v: 'full', label: 'Tüm saha' }, { v: 'follow', label: 'Takip' }], p.camera, (v) => app.setPref('camera', v))),
         row('Kamera açısı (sol: eğik · sağ: tam üstten)', tilt),
         row('Grafik kalitesi', seg([{ v: 'high', label: 'Yüksek' }, { v: 'medium', label: 'Orta' }, { v: 'low', label: 'Düşük' }], p.quality, (v) => app.setPref('quality', v))),
-        el('div', { class: 'toggle-row' }, el('span', { text: 'Gol tekrarlarını göster' }), toggle(p.replays, (v) => app.setPref('replays', v)))),
+        el('div', { class: 'toggle-row' }, el('span', { text: 'Gol tekrarlarını göster' }), toggle(p.replays, (v) => app.setPref('replays', v))),
+        ...touchRows),
     });
   }
 
