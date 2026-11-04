@@ -430,8 +430,14 @@ input[type=number] { -moz-appearance: textfield; }
 .minimap { position: absolute; right: 14px; bottom: calc(14px + var(--safe-b)); width: 200px; height: 112px; border-radius: 12px; border: 1px solid var(--line-2); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
 
 .countdown { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 140px; color: #fff; text-shadow: 0 10px 50px rgba(0, 0, 0, .8), 0 0 40px rgba(182, 255, 59, .5); pointer-events: none; }
-.countdown span { animation: count .9s cubic-bezier(.2, .9, .3, 1) both; }
-@keyframes count { 0% { opacity: 0; transform: scale(2.2); } 25% { opacity: 1; transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: scale(.8); } }
+.countdown span {
+  display: grid; place-items: center; width: 1.45em; height: 1.45em; border-radius: 50%; line-height: 1;
+  font-size: 110px; padding-top: .06em;
+  background: radial-gradient(circle, rgba(6, 9, 18, .55) 55%, rgba(6, 9, 18, 0) 72%);
+  box-shadow: inset 0 0 0 6px rgba(182, 255, 59, .85), 0 0 40px rgba(182, 255, 59, .35);
+  animation: count .7s cubic-bezier(.2, .9, .3, 1) both;
+}
+@keyframes count { 0% { opacity: 0; transform: scale(1.9); } 22% { opacity: 1; transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: scale(.85); } }
 
 .banner { position: absolute; left: 0; right: 0; top: 34%; display: grid; place-items: center; pointer-events: none; }
 .banner .bn {
@@ -443,12 +449,12 @@ input[type=number] { -moz-appearance: textfield; }
 @keyframes bn { 0% { opacity: 0; transform: scaleX(.3); } 15% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
 
 .goal-banner { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; overflow: hidden; }
-.goal-banner .gb { position: relative; width: 100%; display: grid; place-items: center; animation: gb-wrap 2.4s ease both; }
+.goal-banner .gb { position: relative; width: 100%; display: grid; place-items: center; animation: gb-wrap 1.7s ease both; }
 .goal-banner .gb-stripe {
   position: absolute; left: -10%; right: -10%; height: 170px; transform: skewY(-4deg);
   background: linear-gradient(90deg, var(--gc2), var(--gc) 30%, var(--gc) 70%, var(--gc2));
   box-shadow: 0 0 80px var(--gc);
-  animation: gb-stripe 2.4s cubic-bezier(.2, .9, .3, 1) both;
+  animation: gb-stripe 1.7s cubic-bezier(.2, .9, .3, 1) both;
 }
 .goal-banner .gb-stripe::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0 30px, transparent 30px 60px); animation: slide 1s linear infinite; }
 @keyframes slide { to { background-position: 60px 0; } }
@@ -456,11 +462,11 @@ input[type=number] { -moz-appearance: textfield; }
 .goal-banner h1 {
   margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(64px, 12vw, 150px); line-height: 1; letter-spacing: .04em;
   text-shadow: 0 6px 0 rgba(0, 0, 0, .25), 0 20px 50px rgba(0, 0, 0, .5);
-  animation: gb-title 2.4s cubic-bezier(.2, 1.6, .4, 1) both;
+  animation: gb-title 1.7s cubic-bezier(.2, 1.6, .4, 1) both;
 }
-.goal-banner .gb-who { font-size: 20px; font-weight: 800; letter-spacing: .03em; animation: gb-sub 2.4s ease both; text-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+.goal-banner .gb-who { font-size: 20px; font-weight: 800; letter-spacing: .03em; animation: gb-sub 1.7s ease both; text-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
 .goal-banner .gb-who small { display: block; font-size: 14px; font-weight: 600; opacity: .85; }
-.goal-banner .gb-score { font-family: var(--display); font-size: 26px; margin-top: 4px; animation: gb-sub 2.4s ease both; }
+.goal-banner .gb-score { font-family: var(--display); font-size: 26px; margin-top: 4px; animation: gb-sub 1.7s ease both; }
 @keyframes gb-stripe { 0% { transform: skewY(-4deg) scaleX(0); } 12% { transform: skewY(-4deg) scaleX(1); } 85% { opacity: 1; transform: skewY(-4deg) scaleX(1); } 100% { opacity: 0; transform: skewY(-4deg) scaleX(1.1); } }
 @keyframes gb-title { 0% { opacity: 0; transform: scale(3); } 14% { opacity: 1; transform: scale(1); } 85% { opacity: 1; transform: scale(1.04); } 100% { opacity: 0; transform: scale(1.2); } }
 @keyframes gb-sub { 0%, 15% { opacity: 0; transform: translateY(10px); } 25% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
@@ -652,7 +658,7 @@ body.touch-ui .spectate-bar { bottom: auto; top: calc(92px + var(--safe-t)); }
 }
 @media (max-height: 520px) {
   .hud-chat { display: none; }
-  .countdown { font-size: 90px; }
+  .countdown span { font-size: 72px; }
   .goal-banner .gb-stripe { height: 120px; }
 }
 @media (prefers-reduced-motion: reduce) {
