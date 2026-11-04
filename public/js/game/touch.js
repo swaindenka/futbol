@@ -40,6 +40,7 @@ export class TouchControls {
         e.preventDefault();
         this.active = true;
         this.state.b |= def.bit;
+        this.root.classList.add('pressing');
         el.classList.add('on');
         if (navigator.vibrate) navigator.vibrate(8);
       };
@@ -47,6 +48,7 @@ export class TouchControls {
         e.preventDefault();
         this.state.b &= ~def.bit;
         el.classList.remove('on');
+        if (!this.root.querySelector('.tbtn.on')) this.root.classList.remove('pressing');
       };
       el.addEventListener('pointerdown', press);
       el.addEventListener('pointerup', release);
@@ -93,7 +95,13 @@ export class TouchControls {
     if (!this.root.querySelector('[data-id="sprint"].on')) this.state.b &= ~BTN.SPRINT;
   }
 
+  setLook(alpha, size) {
+    this.root.style.setProperty('--touch-alpha', String(alpha));
+    this.root.querySelector('.touch-buttons').style.setProperty('--ts', String(size));
+  }
+
   reset() {
+    this.root.classList.remove('pressing');
     this.state.mx = 0;
     this.state.my = 0;
     this.state.b = 0;

@@ -577,6 +577,7 @@ export class Session {
       focus: this.replay ? null : me || null,
       cameraMode: this.replay ? 'follow' : demo ? 'full' : prefs.camera,
       zoomBoost: this.replay ? 1.15 : 1,
+      shift: this.app.touch && !this.replay && !demo ? { x: this.app.renderer.W * 0.1, y: this.app.renderer.H * 0.06 } : null,
       tilt: prefs.tilt,
       topPad: demo ? 0 : 74,
       letterbox: this.replay ? 1 : 0,

@@ -31,6 +31,7 @@ class App {
     this.touch = isTouchDevice() ? new TouchControls($('#touch')) : null;
     this.input.touch = this.touch;
     document.body.classList.toggle('touch-ui', !!this.touch);
+    if (this.touch) this.touch.setLook(this.prefs.touchAlpha, this.prefs.touchSize);
     this.net = new Net();
     this.net.hello = () => ({ t: 'hello', name: this.prefs.name, number: this.prefs.number });
 
@@ -85,6 +86,7 @@ class App {
     this.savePrefs();
     if (key === 'volume') this.audio.setVolume(value);
     if (key === 'aim') this.input.aimMode = value;
+    if ((key === 'touchAlpha' || key === 'touchSize') && this.touch) this.touch.setLook(this.prefs.touchAlpha, this.prefs.touchSize);
     if (key === 'quality') {
       this.renderer.setQuality(value);
       if (this.session) {

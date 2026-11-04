@@ -16,6 +16,8 @@ export const DEFAULT_PREFS = {
   quality: 'high',
   replays: true,
   hintsSeen: false,
+  touchAlpha: 0.55,
+  touchSize: 1,
 };
 
 export function loadPrefs() {

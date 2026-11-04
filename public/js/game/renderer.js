@@ -80,7 +80,7 @@ export class Renderer {
     this.time += dt;
     cam.topPad = opts.topPad ?? 70;
     if (opts.tilt && Math.abs(opts.tilt - cam.tilt) > 0.001) cam.setTilt(opts.tilt);
-    cam.update(dt, f, opts.focus, view.ball, opts.cameraMode || 'auto', opts.zoomBoost || 1);
+    cam.update(dt, f, opts.focus, view.ball, opts.cameraMode || 'auto', opts.zoomBoost || 1, opts.shift || null);
     const sh = fx.shake;
     cam.shakeX = sh ? (Math.random() - 0.5) * sh : 0;
     cam.shakeY = sh ? (Math.random() - 0.5) * sh : 0;

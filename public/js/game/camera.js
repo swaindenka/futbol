@@ -50,7 +50,7 @@ export class Camera {
    * @param {string} pref 'auto' | 'full' | 'follow'
    * @param {number} [zoomBoost]
    */
-  update(dt, field, focus, ball, pref, zoomBoost = 1) {
+  update(dt, field, focus, ball, pref, zoomBoost = 1, shift = null) {
     const fit = this.fitZoom(field);
     let mode = pref;
     if (pref === 'auto') mode = fit < 0.6 ? 'follow' : 'full';
@@ -66,8 +66,13 @@ export class Camera {
       toffY = this.topPad / 2 - 4;
     } else {
       tz = Math.max(fit * 1.05, clamp(Math.min(this.W, this.H * 1.7) / 980, 0.72, 1.45)) * zoomBoost;
-      const fx = focus ? focus.x * 0.62 + ball.x * 0.38 : ball.x;
-      const fy = focus ? focus.y * 0.62 + ball.y * 0.38 : ball.y;
+      let fx = focus ? focus.x * 0.62 + ball.x * 0.38 : ball.x;
+      let fy = focus ? focus.y * 0.62 + ball.y * 0.38 : ball.y;
+      if (shift && focus) {
+        // Push the view so the player sits left of / above the on-screen buttons.
+        fx += shift.x / tz;
+        fy += shift.y / tz / this.tilt;
+      }
       // Keep the view inside the arena where possible.
       const halfW = this.W / 2 / tz;
       const halfH = this.H / 2 / tz / this.tilt;
