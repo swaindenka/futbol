@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Futbol Arena</title>
+  <meta name="description" content="Arkadaşlarınla tarayıcıda gerçek zamanlı, üstten görünümlü çok oyunculu futbol. 2-8 oyuncu, 4v4'e kadar.">
+  <meta name="theme-color" content="#060912">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Russo+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="game" aria-label="Oyun alanı"></canvas>
+  <div id="menu-shade" class="menu-shade"></div>
+
+  <!-- HOME ---------------------------------------------------------------->
+  <main id="screen-home" class="screen">
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-ball" viewBox="0 0 64 64" aria-hidden="true"><use href="#ico-ball"/></svg>
+        <span>FUTBOL <b>ARENA</b></span>
+      </div>
+      <div class="topbar-actions">
+        <span id="conn" class="conn" data-s="connecting"><i></i><span>Bağlanıyor…</span></span>
+        <button class="icon-btn" data-open="help" title="Kontroller (H)"><svg><use href="#ico-keyboard"/></svg></button>
+        <button class="icon-btn" data-open="settings" title="Ayarlar"><svg><use href="#ico-gear"/></svg></button>
+        <button class="icon-btn" data-toggle="mute" title="Ses (M)"><svg><use href="#ico-sound"/></svg></button>
+      </div>
+    </header>
+
+    <div class="home-grid">
+      <section class="card hero">
+        <div class="hero-title">
+          <div class="kicker">Çok oyunculu · Gerçek zamanlı · 4v4'e kadar</div>
+          <h1>FUTBOL<br><span>ARENA</span></h1>
+          <p>Bilardo masası gibi üstten bakılan bir statta; şut doldur, falso ver, aşırt, kayarak top kap. 2–8 kişi aynı odada.</p>
+        </div>
+
+        <div class="profile">
+          <div class="jersey" id="jersey-preview" title="Forman">
+            <svg viewBox="0 0 100 100" aria-hidden="true"><use href="#ico-jersey"/></svg>
+            <span id="jersey-num">10</span>
+          </div>
+          <label class="field grow">
+            <span>Takma ad</span>
+            <input id="in-name" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Adını yaz">
+          </label>
+          <label class="field num">
+            <span>No</span>
+            <input id="in-number" type="number" min="1" max="99" inputmode="numeric">
+          </label>
+        </div>
+
+        <div class="cta">
+          <button id="btn-quick" class="btn primary xl"><svg><use href="#ico-bolt"/></svg>Hızlı Maç</button>
+          <div class="row2">
+            <button id="btn-create" class="btn"><svg><use href="#ico-plus"/></svg>Oda Kur</button>
+            <button id="btn-practice" class="btn"><svg><use href="#ico-target"/></svg>Antrenman</button>
+          </div>
+          <form id="join-form" class="join" autocomplete="off">
+            <input id="in-code" placeholder="ODA KODU" maxlength="5" spellcheck="false" aria-label="Oda kodu">
+            <button class="btn accent" type="submit">Katıl</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="card rooms">
+        <div class="card-head">
+          <h2>Açık Odalar <span id="rooms-count" class="badge">0</span></h2>
+          <button id="btn-refresh" class="icon-btn" title="Yenile"><svg><use href="#ico-refresh"/></svg></button>
+        </div>
+        <div id="rooms-list" class="rooms-list"></div>
+      </section>
+    </div>
+
+    <footer class="keys-strip" aria-label="Kontroller">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Hareket</span>
+      <span><kbd>Shift</kbd> Depar</span>
+      <span><kbd>Space</kbd>/<kbd>🖱 Sol</kbd> Şut (basılı tut)</span>
+      <span><kbd>E</kbd> Pas</span>
+      <span><kbd>R</kbd>/<kbd>🖱 Sağ</kbd> Aşırtma</span>
+      <span><kbd>Q</kbd> Kayarak müdahale</span>
+    </footer>
+  </main>
+
+  <!-- ROOM ---------------------------------------------------------------->
+  <main id="screen-room" class="screen" hidden>
+    <header class="room-head">
+      <button id="btn-leave" class="btn ghost"><svg><use href="#ico-back"/></svg>Ayrıl</button>
+      <div class="room-title">
+        <h2 id="room-name">Oda</h2>
+        <div class="room-meta"><span id="room-visibility" class="pill"></span><span id="room-count" class="muted"></span></div>
+      </div>
+      <div class="room-code">
+        <button id="btn-copy-code" class="code-chip" title="Kodu kopyala"><span>KOD</span><b id="room-code">-----</b><svg><use href="#ico-copy"/></svg></button>
+        <button id="btn-invite" class="btn small"><svg><use href="#ico-link"/></svg>Davet linki</button>
+      </div>
+    </header>
+
+    <div class="room-grid">
+      <section class="teams-wrap">
+        <div class="teams">
+          <div class="team-card" data-team="0"></div>
+          <div class="vs"><span>VS</span></div>
+          <div class="team-card" data-team="1"></div>
+        </div>
+        <div class="card spectators">
+          <div class="card-head slim">
+            <h3>İzleyiciler</h3>
+            <button class="btn small ghost" data-join="-1">İzleyici ol</button>
+          </div>
+          <div id="spec-list" class="chips"></div>
+        </div>
+      </section>
+      <aside class="side">
+        <section class="card settings">
+          <div class="card-head slim"><h3>Maç Ayarları</h3><span id="settings-lock" class="muted small"></span></div>
+          <div id="room-settings" class="settings-body"></div>
+        </section>
+        <section class="card chat">
+          <div class="card-head slim"><h3>Sohbet</h3></div>
+          <div id="room-chat-log" class="chat-log"></div>
+          <form id="room-chat-form" class="chat-form" autocomplete="off">
+            <input id="room-chat-input" placeholder="Mesaj yaz…" maxlength="160">
+            <button class="icon-btn" type="submit" title="Gönder"><svg><use href="#ico-send"/></svg></button>
+          </form>
+        </section>
+      </aside>
+    </div>
+
+    <footer class="room-foot">
+      <div id="room-hint" class="room-hint"></div>
+      <div class="row2">
+        <button id="btn-shuffle" class="btn"><svg><use href="#ico-shuffle"/></svg>Karıştır</button>
+        <button id="btn-start" class="btn primary xl"><svg><use href="#ico-play"/></svg>Maçı Başlat</button>
+      </div>
+    </footer>
+  </main>
+
+  <!-- HUD ----------------------------------------------------------------->
+  <div id="hud" class="hud" hidden>
+    <div class="scoreboard" id="scoreboard">
+      <div class="sb-main">
+        <div class="sb-team left"><i class="sb-kit"></i><span class="sb-name"></span></div>
+        <div class="sb-score"><span id="sb-s0">0</span><span class="sb-sep"></span><span id="sb-s1">0</span></div>
+        <div class="sb-team right"><span class="sb-name"></span><i class="sb-kit"></i></div>
+      </div>
+      <div class="sb-sub"><span id="sb-clock" class="sb-clock">03:00</span><span id="sb-tag" class="sb-tag" hidden></span></div>
+    </div>
+
+    <div class="hud-tr">
+      <span id="hud-ping" class="pill mono" hidden>— ms</span>
+      <button class="icon-btn" id="hud-chat-btn" title="Sohbet (Enter)"><svg><use href="#ico-chat"/></svg></button>
+      <button class="icon-btn" id="hud-cam" title="Kamera (F)"><svg><use href="#ico-camera"/></svg></button>
+      <button class="icon-btn" data-toggle="mute" title="Ses (M)"><svg><use href="#ico-sound"/></svg></button>
+      <button class="icon-btn" id="hud-full" title="Tam ekran"><svg><use href="#ico-full"/></svg></button>
+      <button class="icon-btn" id="hud-menu" title="Menü (Esc)"><svg><use href="#ico-menu"/></svg></button>
+    </div>
+
+    <div id="feed" class="feed"></div>
+    <div class="hud-chat" id="hud-chat">
+      <div id="hud-chat-log" class="hud-chat-log"></div>
+      <form id="hud-chat-form" class="hud-chat-form" hidden autocomplete="off">
+        <input id="hud-chat-input" maxlength="160" placeholder="Mesaj yaz, Enter ile gönder">
+      </form>
+    </div>
+    <canvas id="minimap" class="minimap" width="200" height="112" hidden></canvas>
+    <div id="countdown" class="countdown"></div>
+    <div id="banner" class="banner"></div>
+    <div id="goal-banner" class="goal-banner"></div>
+    <div id="pop" class="pop"></div>
+    <div id="replay-badge" class="replay-badge" hidden><i></i>TEKRAR<small>Geçmek için Space / dokun</small></div>
+    <div id="spectate-bar" class="spectate-bar" hidden>
+      <span>İzleyicisin</span>
+      <button class="btn small" data-join="0">Katıl: <b data-kitname="0"></b></button>
+      <button class="btn small" data-join="1">Katıl: <b data-kitname="1"></b></button>
+    </div>
+    <div id="emote-bar" class="emote-bar"></div>
+    <div id="scores-overlay" class="scores-overlay" hidden></div>
+    <div id="hint" class="hint"></div>
+  </div>
+
+  <div id="touch" class="touch" hidden></div>
+  <div id="overlay-root"></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="rotate-hint" class="rotate-hint"><svg><use href="#ico-rotate"/></svg><p>Daha iyi bir deneyim için telefonunu yan çevir.</p></div>
+
+  <!-- Icons ---------------------------------------------------------------->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="ico-ball" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" fill="#fff"/><path fill="#111" d="M32 18l9 6.5-3.4 10.6H26.4L23 24.5zM12 27l6-1 3.3 10.4-5 6.7-6.2-2.5A22 22 0 0 1 12 27zm40 0a22 22 0 0 1 1.9 13.6l-6.2 2.5-5-6.7L46 26zM24.5 49.5l2.2-7.4h10.6l2.2 7.4a22 22 0 0 1-15 0z"/><circle cx="32" cy="32" r="29" fill="none" stroke="#111" stroke-width="2.5"/></symbol>
+    <symbol id="ico-jersey" viewBox="0 0 100 100"><path d="M34 8 18 14 4 32l14 12 6-6v54h52V38l6 6 14-12-14-18-16-6c-2 7-8 12-16 12S36 15 34 8z"/></symbol>
+    <symbol id="ico-keyboard" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M3 6.5h18v11H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10"/></symbol>
+    <symbol id="ico-gear" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM19.4 13.5l1.6 1.2-1.8 3.2-1.9-.7a7.6 7.6 0 0 1-1.8 1l-.3 2H11l-.4-2a7.6 7.6 0 0 1-1.7-1l-2 .7L5 14.7l1.6-1.2a7.4 7.4 0 0 1 0-2.1L5 10.2l1.8-3.2 2 .7c.5-.4 1.1-.7 1.7-1l.4-2h3.6l.3 2c.7.3 1.3.6 1.8 1l1.9-.7 1.8 3.2-1.6 1.2c.1.7.1 1.4 0 2.1z"/></symbol>
+    <symbol id="ico-sound" viewBox="0 0 24 24"><path fill="currentColor" d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/><path class="mute-x" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16 9.5l5 5m0-5-5 5"/></symbol>
+    <symbol id="ico-bolt" viewBox="0 0 24 24"><path fill="currentColor" d="M13.5 2 4 14h6.5L9.5 22 20 9.5h-6.6z"/></symbol>
+    <symbol id="ico-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="ico-target" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/></g><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
+    <symbol id="ico-refresh" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></symbol>
+    <symbol id="ico-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="ico-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/></g></symbol>
+    <symbol id="ico-link" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></symbol>
+    <symbol id="ico-send" viewBox="0 0 24 24"><path fill="currentColor" d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z"/></symbol>
+    <symbol id="ico-shuffle" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></symbol>
+    <symbol id="ico-play" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4.5v15l12.5-7.5z"/></symbol>
+    <symbol id="ico-camera" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M3 8.5h4l1.6-2.5h6.8L17 8.5h4V19H3z"/><circle cx="12" cy="13.3" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="ico-full" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="ico-menu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="ico-chat" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/></symbol>
+    <symbol id="ico-crown" viewBox="0 0 24 24"><path fill="currentColor" d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5z"/></symbol>
+    <symbol id="ico-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="ico-bot" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4.5" y="8" width="15" height="11" rx="3"/><path d="M12 8V4.5M9 13h.01M15 13h.01" stroke-linecap="round"/></g></symbol>
+    <symbol id="ico-rotate" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 12a9 9 0 0 0 4 7.5M21 12a9 9 0 0 0-4-7.5"/></g></symbol>
+  </svg>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
