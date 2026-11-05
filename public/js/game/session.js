@@ -10,7 +10,7 @@ import { decodeSnapshot } from '../../shared/protocol.js';
 import { BotBrain } from '../../shared/bot.js';
 import { MatchStats } from '../../shared/stats.js';
 import {
-  KITS, PHASE, TICK_MS, TIMING, EMOTES, BOT_NAMES, PU, PU_INFO, fieldForTeamSize,
+  KITS, PHASE, TICK_MS, TIMING, EMOTES, BOT_NAMES, PU, PU_INFO, PU_TUNE, fieldForTeamSize,
 } from '../../shared/constants.js';
 import { lerp } from '../../shared/util.js';
 import { Effects } from './effects.js';
@@ -22,6 +22,18 @@ const REPLAY_BEFORE = 110;
 const REPLAY_AFTER = 24;
 const REPLAY_SPEED = 0.6;
 const REPLAY_DELAY = 1900;
+
+const upper = (t) => String(t).toLocaleUpperCase('tr');
+
+// Kill-feed text for power-ups whose effect is not simply "X picked up Y".
+const PU_FEED = {
+  ice: 'rakipleri yavaşlattı!',
+  rubber: 'topu lastik yaptı!',
+  shield: 'kalesine kalkan kurdu!',
+  shock: 'şok dalgası patlattı!',
+  dizzy: 'lanetlendi: Ters Köşe!',
+  slippy: 'lanetlendi: Kaygan!',
+};
 
 function shuffled(arr) {
   const a = [...arr];
@@ -62,6 +74,7 @@ export class Session {
     this.destroyed = false;
     this.lastCount = -1;
     this.goalCount = 0;
+    this.goalsBy = new Map();
 
     if (this.mode === 'online') {
       this.mid = opts.mid;
@@ -325,26 +338,66 @@ export class Session {
         break;
       case 'pu': {
         const info = PU_INFO[e.k];
-        if (audio) audio.powerUp(e.k);
+        if (!info) break;
+        const curse = info.kind === 'curse';
+        if (audio) {
+          if (curse) audio.curse();
+          else audio.powerUp(e.k);
+        }
         fx.burst(e.x, e.y, info.color);
+        if (e.k === PU.SHOCK) {
+          fx.ring(e.x, e.y, 'rgba(120,160,255,0.9)', 20, PU_TUNE.SHOCK_R, 0.55);
+          fx.ring(e.x, e.y, 'rgba(255,255,255,0.75)', 10, PU_TUNE.SHOCK_R * 0.7, 0.4);
+          fx.addShake(7);
+          if (audio) audio.boom();
+        }
         if (hud) {
-          const who = e.p === this.myId ? 'Sen' : this.name(e.p);
-          const what = e.k === PU.ICE ? 'rakipleri dondurdu!' : e.k === PU.RUBBER ? 'topu lastik yaptı!' : `${info.name} aldı!`;
-          hud.feed(`${who}: ${what}`, 'info', info.color);
-          if (e.p === this.myId) hud.popText(info.name.toLocaleUpperCase('tr'), info.color);
-          else {
-            const me = this.myPlayer();
-            const pl = findPlayer(this.state, e.p);
-            if (e.k === PU.ICE && me && pl && pl.team !== me.team) hud.popText('DONDUN!', info.color);
-          }
+          const mine = e.p === this.myId;
+          const who = mine ? 'Sen' : this.name(e.p);
+          const what = PU_FEED[info.id] || `${info.name} aldı!`;
+          hud.feed(`${who}${e.m ? ' (sürpriz kutu)' : ''}: ${what}`, curse ? 'curse' : 'info', info.color);
+          const me = this.myPlayer();
+          const pl = findPlayer(this.state, e.p);
+          const foe = me && pl && pl.team !== me.team;
+          if (mine) hud.popText(curse ? `LANET: ${upper(info.name)}` : upper(info.name), info.color);
+          else if (foe && e.k === PU.ICE) hud.popText('YAVAŞLADIN!', info.color);
+          else if (foe && e.k === PU.SHOCK && me.st > 0) hud.popText('SERSEMLEDİN!', info.color);
         }
         break;
       }
       case 'blast': {
         const v = findPlayer(this.state, e.p);
         if (audio) audio.boom();
-        if (v) fx.burst(v.x, v.y, 'rgba(255,150,40,0.9)');
+        if (v) {
+          fx.burst(v.x, v.y, 'rgba(255,150,40,0.9)');
+          fx.stars(v.x, v.y);
+        }
         fx.addShake(5);
+        if (hud && e.p === this.myId) hud.popText('SERSEMLEDİN!', PU_INFO[PU.FIRE].color);
+        break;
+      }
+      case 'shield': {
+        const f = this.state.field;
+        const x = (e.t === 0 ? -1 : 1) * f.hw;
+        const kit = this.kits[e.t];
+        if (audio) audio.zap();
+        fx.burst(x, e.y, kit.primary);
+        fx.sparks(x, e.y, 24);
+        fx.addShake(5);
+        if (hud) {
+          hud.popText('KALKAN!', PU_INFO[PU.SHIELD].color);
+          hud.feed(`${kit.name} kalkanı şutu durdurdu!`, 'info', PU_INFO[PU.SHIELD].color);
+        }
+        break;
+      }
+      case 'save': {
+        const v = findPlayer(this.state, e.p);
+        if (v) fx.ring(v.x, v.y, 'rgba(255,255,255,0.85)', 14, 46, 0.4);
+        if (audio) audio.crowdOoh();
+        if (hud) {
+          if (e.v >= 6.5) hud.popText(e.p === this.myId ? 'SÜPER KURTARIŞ!' : 'KURTARIŞ!');
+          hud.feed(`🧤 ${e.p === this.myId ? 'Sen' : this.name(e.p)}: kurtarış`, 'info');
+        }
         break;
       }
       case 'tap':
@@ -420,6 +473,14 @@ export class Session {
       score: e.s,
       kits: this.kits,
     });
+    if (!e.own && e.p >= 0) {
+      const n = (this.goalsBy.get(e.p) || 0) + 1;
+      this.goalsBy.set(e.p, n);
+      if (n === 3) {
+        const who = e.p === this.myId ? 'Sen yaptın!' : this.name(e.p);
+        setTimeout(() => !this.destroyed && this.app.hud.banner('HAT-TRİK!', who, 2400), 1700);
+      }
+    }
     if (this.settings.replays && this.app.prefs.replays !== false) {
       const goalTick = this.mode === 'online' ? this.state.tick - this.history.length : this.state.tick;
       if (this.replayTimer) clearTimeout(this.replayTimer);
@@ -500,7 +561,7 @@ export class Session {
       const r = cur + (target - cur) * 0.18;
       this.rad.set(p.id, r);
       return this.buildPlayerView(p.id, p.team, pos.x, pos.y, p.facing, p.vx, p.vy, {
-        ct: p.ct, r, eff: p.eff, et: p.et, sl: p.sl,
+        ct: p.ct, r, eff: p.eff, et: p.et, sl: p.sl, st: p.st, db: p.db, dt: p.dt,
       });
     });
     const b = s.ball;
@@ -512,8 +573,11 @@ export class Session {
       speed: Math.hypot(b.vx, b.vy),
       fire: b.fire,
       rub: b.rub,
+      at: b.at,
     };
-    return { field: s.field, kits: this.kits, phase: s.phase, ko: s.ko, players, ball, pu: s.pu };
+    return {
+      field: s.field, kits: this.kits, phase: s.phase, ko: s.ko, players, ball, pu: s.pu, sh: s.sh,
+    };
   }
 
   replayView(dt) {

@@ -107,17 +107,24 @@ export class Hud {
     });
     if (follow && ++this.minimapTick % 3 === 0) this.app.renderer.drawMinimap(this.minimap, view);
 
-    // Active power-ups: mine, being frozen, and a rubber ball.
+    // Active effects: my buff, my debuffs, shields on the goals and a rubber ball.
     const me = session.myPlayer();
     const chips = [];
-    if (me && me.eff) chips.push([me.eff, me.eff === PU.FIRE ? 'sonraki vuruş' : '', me.et / PU_INFO[me.eff].ticks]);
-    if (me && me.sl > 0) chips.push([PU.ICE, 'dondun', me.sl / PU_INFO[PU.ICE].ticks]);
+    if (me && me.eff && PU_INFO[me.eff]) chips.push([me.eff, me.eff === PU.FIRE ? 'sonraki vuruş' : '', me.et / PU_INFO[me.eff].ticks]);
+    if (me && me.sl > 0) chips.push([PU.ICE, 'yavaşladın', me.sl / PU_INFO[PU.ICE].ticks]);
+    if (me && me.db && PU_INFO[me.db]) chips.push([me.db, 'lanet', me.dt / PU_INFO[me.db].ticks]);
+    for (let t = 0; t < 2; t++) {
+      if (!(s.sh[t] > 0)) continue;
+      const note = me ? (me.team === t ? 'kalen' : 'rakip kale') : session.kits[t].name;
+      chips.push([PU.SHIELD, note, s.sh[t] / PU_INFO[PU.SHIELD].ticks]);
+    }
     if (s.ball.rub > 0) chips.push([PU.RUBBER, '', s.ball.rub / PU_INFO[PU.RUBBER].ticks]);
-    const key = chips.map((c) => `${c[0]}:${Math.ceil(c[2] * 20)}`).join('|');
+    const key = chips.map((c) => `${c[0]}:${c[1]}:${Math.ceil(c[2] * 20)}`).join('|');
     this.set('chips', key, () => {
       this.puChips.innerHTML = chips.map(([k, note, left]) => {
         const info = PU_INFO[k];
-        return `<div class="pu-chip" style="--pc:${info.color}"><b>${esc(info.name)}</b>${note ? `<small>${esc(note)}</small>` : ''}<i style="width:${Math.round(left * 100)}%"></i></div>`;
+        const cls = info.kind === 'curse' ? 'pu-chip curse' : 'pu-chip';
+        return `<div class="${cls}" style="--pc:${info.color}"><b>${esc(info.name)}</b>${note ? `<small>${esc(note)}</small>` : ''}<i style="width:${Math.round(left * 100)}%"></i></div>`;
       }).join('');
     });
 

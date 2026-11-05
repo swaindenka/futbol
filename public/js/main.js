@@ -12,7 +12,7 @@ import { Hud } from './ui/hud.js';
 import { HomeScreen } from './ui/home.js';
 import { RoomScreen } from './ui/room.js';
 import { Modals, statsTablesHtml } from './ui/modals.js';
-import { DEFAULT_SETTINGS, KITS } from '../shared/constants.js';
+import { DEFAULT_SETTINGS, KITS, puLevel } from '../shared/constants.js';
 
 // Per-tab identity (survives refresh, not shared between tabs) so a reconnect resumes the player.
 function sessionToken() {
@@ -233,7 +233,7 @@ class App {
     const kits = [0, 4];
     this.setSession(new Session(this, {
       mode: 'practice',
-      settings: { ...DEFAULT_SETTINGS, duration: opts.duration || 180, goldenGoal: true, powerups: opts.powerups !== false, kits },
+      settings: { ...DEFAULT_SETTINGS, duration: opts.duration || 180, goldenGoal: true, powerups: puLevel(opts.powerups), kits },
       teamSize: opts.teamSize || 3,
       level: opts.level ?? 1,
     }));
@@ -263,13 +263,22 @@ class App {
   }
 
   firstHints() {
-    if (this.prefs.hintsSeen) return;
-    this.prefs.hintsSeen = true;
-    this.savePrefs();
     const touch = this.touch && matchMedia('(pointer: coarse)').matches;
+    if (this.prefs.hintsSeen) {
+      if (this.prefs.curveHintSeen) return;
+      this.prefs.curveHintSeen = true;
+      this.savePrefs();
+      this.hud.hints([touch
+        ? 'Yeni: vurduktan hemen sonra joystick\'i yana çevir, top <b>falso</b> alır.'
+        : 'Yeni: vurduktan hemen sonra yön tuşunu yana çevir, top <b>falso</b> alır.']);
+      return;
+    }
+    this.prefs.hintsSeen = true;
+    this.prefs.curveHintSeen = true;
+    this.savePrefs();
     this.hud.hints(touch
-      ? ['Sol tarafta parmağınla koş, topa çarparak sür.', 'Topun önündeki oklar vuruş yönünü gösterir — <b>VUR</b> tuşuna bas!']
-      : ['<kbd>W A S D</kbd> veya ok tuşlarıyla koş, topa çarparak sür.', 'Topun önündeki oklar vuruş yönünü gösterir — <kbd>Space</kbd> ile vur!', 'Menü (<kbd>Esc</kbd>) antrenmanda oyunu duraklatır.']);
+      ? ['Sol tarafta parmağınla koş, topa çarparak sür.', 'Topun önündeki oklar vuruş yönünü gösterir — <b>VUR</b> tuşuna bas!', 'Vurduktan hemen sonra joystick\'i yana çevir: top <b>falso</b> alır.']
+      : ['<kbd>W A S D</kbd> veya ok tuşlarıyla koş, topa çarparak sür.', 'Topun önündeki oklar vuruş yönünü gösterir — <kbd>Space</kbd> ile vur!', 'Vurduktan hemen sonra yön tuşunu yana çevir: top <b>falso</b> alır.', 'Menü (<kbd>Esc</kbd>) antrenmanda oyunu duraklatır.']);
   }
 
   backHome() {
@@ -379,7 +388,9 @@ class App {
       this.roomUI.updatePings(m.p);
       if (m.st) {
         this.liveStats.clear();
-        for (const [id, goals, assists, shots] of m.st) this.liveStats.set(id, { goals, assists, shots });
+        for (const [id, goals, assists, shots, saves = 0, tackles = 0] of m.st) {
+          this.liveStats.set(id, { goals, assists, shots, saves, tackles });
+        }
       }
     });
     net.on('chat', (m) => {
@@ -510,7 +521,7 @@ class App {
     if (s.mode === 'online') {
       players = s.state.players.map((p) => {
         const m = s.meta.get(p.id) || {};
-        const st = this.liveStats.get(p.id) || { goals: 0, assists: 0, shots: 0 };
+        const st = this.liveStats.get(p.id) || { goals: 0, assists: 0, shots: 0, saves: 0, tackles: 0 };
         return { id: p.id, name: m.name || '?', team: p.team, bot: m.bot, ...st };
       });
     } else players = s.stats.summary(s.state.score).players.filter((p) => s.state.players.some((q) => q.id === p.id));

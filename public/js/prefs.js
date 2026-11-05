@@ -12,6 +12,7 @@ export const DEFAULT_PREFS = {
   quality: 'high',
   replays: true,
   hintsSeen: false,
+  curveHintSeen: false, // added with aftertouch: players who saw the first hints still get this one
   touchAlpha: 0.55,
   touchSize: 1,
 };

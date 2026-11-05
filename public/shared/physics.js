@@ -4,9 +4,10 @@
 // sent over the wire and re-simulated.
 
 import {
-  P, B, K, BTN, PHASE, TIMING, TICK_RATE, FIELDS, GOAL_DEPTH, CROSSBAR_Z, POST_R, PU, PU_INFO, PU_TUNE,
+  P, B, K, AT, BTN, PHASE, TIMING, TICK_RATE, FIELDS, GOAL_DEPTH, CROSSBAR_Z, POST_R,
+  PU, PU_INFO, PU_TUNE, PU_RATES, puLevel, pickPowerUp,
 } from './constants.js';
-import { clamp, turnToward } from './util.js';
+import { clamp, turnToward, angleDiff } from './util.js';
 
 const CONTACT = P.R + B.R;
 const REACH = CONTACT + K.REACH;
@@ -40,6 +41,9 @@ export function makeBall() {
     tk: [-1, -1], tkt: [-1, -1], tka: [-1, -1],
     fire: 0, // fireball ticks left
     rub: 0, // rubber-ball ticks left
+    at: 0, // aftertouch ticks left: the kicker can still bend the ball
+    ak: -1, // aftertouch kicker
+    os: 0, // tick the current owner got the ball (not sent: only used for tackle events)
   };
 }
 
@@ -63,6 +67,9 @@ export function makePlayer(id, team, slot) {
     eff: 0, // power-up effect (PU.*) and ticks left
     et: 0,
     sl: 0, // slowed by ice: ticks left
+    st: 0, // dazed (no control) ticks left
+    db: 0, // curse (PU.DIZZY / PU.SLIPPY) and ticks left
+    dt: 0,
     in: makeInput(team),
   };
 }
@@ -72,6 +79,7 @@ export function makePlayer(id, team, slot) {
  * @param {{duration:number, goldenGoal:boolean, scoreLimit:number, replays:boolean}} settings
  */
 export function makeState(fieldKey, settings) {
+  const pu = puLevel(settings.powerups);
   return {
     tick: 0,
     phase: PHASE.COUNTDOWN,
@@ -86,13 +94,14 @@ export function makeState(fieldKey, settings) {
       gg: settings.goldenGoal !== false,
       limit: settings.scoreLimit | 0,
       pause: settings.replays ? TIMING.GOAL_PAUSE_REPLAY : TIMING.GOAL_PAUSE,
-      pu: settings.powerups !== false,
+      pu, // power-up rate level (0 = off)
     },
     ball: makeBall(),
     players: [],
-    pu: [], // power-ups on the pitch: { id, k, x, y, t }
+    pu: [], // power-ups on the pitch: { id, k, x, y, t, m } (m: surprise box content)
     puId: 1,
-    puT: PU_TUNE.FIRST,
+    puT: pu ? PU_RATES[pu].first : PU_TUNE.FIRST,
+    sh: [0, 0], // shield ticks left on each team's goal
   };
 }
 
@@ -106,6 +115,13 @@ export function findPlayer(s, id) {
 export function radius(p) {
   return p.eff === PU.GIANT ? P.R * PU_TUNE.GIANT_SCALE : P.R;
 }
+
+/** Body mass for player-player bumps: a Giant shoves normal players around. */
+function mass(p) {
+  return p.eff === PU.GIANT ? PU_TUNE.GIANT_MASS : 1;
+}
+
+const ghost = (p) => p.eff === PU.GHOST;
 
 export function teamPlayers(s, team) {
   return s.players.filter((p) => p.team === team).sort((a, b) => a.slot - b.slot);
@@ -173,13 +189,16 @@ export function resetKickoff(s) {
     p.facing = p.team === 0 ? 0 : Math.PI;
     p.ct = 0;
     p.kcd = 0;
-    p.eff = p.et = p.sl = 0;
+    p.eff = p.et = p.sl = p.st = p.db = p.dt = 0;
     p.pb = p.in.b | 0;
   }
   s.pu = [];
-  s.puT = PU_TUNE.FIRST;
+  s.puT = s.rules.pu ? PU_RATES[s.rules.pu].first : PU_TUNE.FIRST;
+  s.sh = [0, 0];
   const b = s.ball;
   b.fire = b.rub = 0;
+  b.at = 0;
+  b.ak = -1;
   b.x = b.y = b.z = 0;
   b.vx = b.vy = 0;
   b.owner = -1;
@@ -197,8 +216,20 @@ export function inReach(p, b) {
   return dx * dx + dy * dy <= reach * reach;
 }
 
-function touch(s, p) {
+// A touch only counts as winning the ball if the opponent had it at their feet this long.
+const TACKLE_HOLD = 24;
+
+function touch(s, p, ev) {
   const b = s.ball;
+  // Winning the ball off an opponent who was dribbling it is a tackle ("top kapma").
+  if (ev && b.owner >= 0 && b.owner !== p.id && s.phase === PHASE.PLAY) {
+    const o = findPlayer(s, b.owner);
+    if (o && o.team !== p.team && b.lt === o.team && s.tick - b.os >= TACKLE_HOLD) {
+      ev.push({ e: 'tackle', p: p.id, v: o.id });
+      b.os = s.tick;
+    }
+  }
+  b.at = 0; // any new touch ends the previous kicker's aftertouch
   if (b.last !== p.id) {
     const lastP = b.last >= 0 ? findPlayer(s, b.last) : null;
     b.prev = lastP && lastP.team === p.team ? b.last : -1;
@@ -221,17 +252,25 @@ function kickImpulse(p, b) {
 }
 
 function updatePlayer(s, p, frozen) {
-  const inp = p.in;
-  const btn = inp.b | 0;
+  const btn = p.in.b | 0;
   const pressed = btn & ~p.pb;
   p.pb = btn;
   if (p.kcd > 0) p.kcd--;
   if (p.et > 0 && --p.et === 0) p.eff = 0;
   if (p.sl > 0) p.sl--;
+  if (p.dt > 0 && --p.dt === 0) p.db = 0;
 
   if (frozen) {
     p.vx *= 0.7;
     p.vy *= 0.7;
+    p.ct = 0;
+    return;
+  }
+  if (p.st > 0) {
+    // Dazed: no control, the body keeps sliding from the hit.
+    p.st--;
+    p.vx *= PU_TUNE.STUN_DRAG;
+    p.vy *= PU_TUNE.STUN_DRAG;
     p.ct = 0;
     return;
   }
@@ -241,25 +280,29 @@ function updatePlayer(s, p, frozen) {
     if (pressed & BTN.KICK) p.ct = 1;
   } else p.ct = 0;
 
-  let mx = clamp(+inp.mx || 0, -1, 1);
-  let my = clamp(+inp.my || 0, -1, 1);
+  const [mx, my] = moveInput(p);
   const len = Math.hypot(mx, my);
-  if (len > 1) {
-    mx /= len;
-    my /= len;
-  }
   const moving = len > 0.08;
   let max = P.SPEED * (btn & BTN.KICK ? P.KICK_SLOW : 1);
-  if (p.eff === PU.SPEED) max *= PU_TUNE.SPEED_MUL;
+  let accel = P.ACCEL;
+  let decel = P.DECEL;
+  if (p.eff === PU.SPEED) {
+    max *= PU_TUNE.SPEED_MUL;
+    accel *= PU_TUNE.SPEED_ACCEL;
+  }
   if (p.sl > 0) max *= PU_TUNE.SLOW_MUL;
+  if (p.db === PU.SLIPPY) {
+    accel = PU_TUNE.SLIP_ACCEL;
+    decel = PU_TUNE.SLIP_DECEL;
+  }
   if (moving) {
-    p.vx += (mx * max - p.vx) * P.ACCEL;
-    p.vy += (my * max - p.vy) * P.ACCEL;
+    p.vx += (mx * max - p.vx) * accel;
+    p.vy += (my * max - p.vy) * accel;
     // Only clear input turns the body, so tiny corrections do not make players twitch.
     if (len > 0.3) p.facing = turnToward(p.facing, Math.atan2(my, mx), P.TURN);
   } else {
-    p.vx *= P.DECEL;
-    p.vy *= P.DECEL;
+    p.vx *= decel;
+    p.vy *= decel;
   }
 }
 
@@ -288,7 +331,7 @@ function kicks(s, ev) {
   for (const p of kickers) {
     p.ct = 0;
     p.kcd = K.KICK_CD;
-    touch(s, p);
+    touch(s, p, ev);
     let fire = 0;
     if (p.eff === PU.FIRE) {
       // The fireball is used up by this kick.
@@ -299,22 +342,82 @@ function kicks(s, ev) {
     const v = Math.round(Math.hypot(vx, vy) * 10) / 10;
     ev.push({ e: 'kick', p: p.id, v, a: Math.round(Math.atan2(vy, vx) * 100) / 100, fire });
   }
+  // A clean (uncontested) kick can be bent by its kicker for a moment.
+  if (kickers.length === 1) {
+    b.at = AT.TICKS;
+    b.ak = kickers[0].id;
+  }
+}
+
+/** Movement input after curses (Dizzy reverses it). Zero while dazed. */
+export function moveInput(p) {
+  if (p.st > 0) return [0, 0];
+  let mx = clamp(+p.in.mx || 0, -1, 1);
+  let my = clamp(+p.in.my || 0, -1, 1);
+  const len = Math.hypot(mx, my);
+  if (len > 1) {
+    mx /= len;
+    my /= len;
+  }
+  if (p.db === PU.DIZZY) return [-mx, -my];
+  return [mx, my];
 }
 
 // ---------------------------------------------------------------------------
 // Power-ups
 
+/** Daze a player (no control for a moment). Ghosts are immune. */
+function stun(p, ticks) {
+  if (ghost(p)) return false;
+  p.st = Math.max(p.st, ticks);
+  p.ct = 0;
+  return true;
+}
+
+/** Shock wave: shove every opponent near `p` away and daze them. Returns how many were hit. */
+function shockWave(s, p) {
+  let hit = 0;
+  const R = PU_TUNE.SHOCK_R;
+  for (const q of s.players) {
+    if (q.team === p.team || ghost(q)) continue;
+    const dx = q.x - p.x;
+    const dy = q.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d > R) continue;
+    const nx = d > 0.01 ? dx / d : q.team === 0 ? -1 : 1;
+    const ny = d > 0.01 ? dy / d : 0;
+    const f = PU_TUNE.SHOCK_KNOCK * (1 - (0.5 * d) / R);
+    q.vx += nx * f;
+    q.vy += ny * f;
+    stun(q, PU_TUNE.SHOCK_STUN);
+    hit++;
+  }
+  return hit;
+}
+
 function applyPowerUp(s, p, k) {
-  if (k === PU.ICE) {
-    for (const q of s.players) if (q.team !== p.team) q.sl = PU_INFO[PU.ICE].ticks;
-    return;
+  const info = PU_INFO[k];
+  switch (info.kind) {
+    case 'foe':
+      for (const q of s.players) if (q.team !== p.team) q.sl = info.ticks;
+      return;
+    case 'ball':
+      s.ball.rub = info.ticks;
+      return;
+    case 'team':
+      s.sh[p.team] = info.ticks;
+      return;
+    case 'instant':
+      shockWave(s, p);
+      return;
+    case 'curse':
+      p.db = k;
+      p.dt = info.ticks;
+      return;
+    default:
+      p.eff = k;
+      p.et = info.ticks;
   }
-  if (k === PU.RUBBER) {
-    s.ball.rub = PU_INFO[PU.RUBBER].ticks;
-    return;
-  }
-  p.eff = k;
-  p.et = PU_INFO[k].ticks;
 }
 
 /** Picking up runs everywhere (prediction too); spawning only on the authority. */
@@ -332,27 +435,34 @@ function powerUps(s, auth, ev) {
       const dx = p.x - u.x;
       const dy = p.y - u.y;
       if (dx * dx + dy * dy > reach * reach) continue;
-      applyPowerUp(s, p, u.k);
+      // The surprise box content is rolled when it spawns, so prediction stays in sync.
+      const box = u.k === PU.MYSTERY;
+      const k = box ? u.m || PU.FIRE : u.k;
+      applyPowerUp(s, p, k);
       list.splice(i, 1);
-      ev.push({ e: 'pu', p: p.id, k: u.k, x: Math.round(u.x), y: Math.round(u.y) });
+      ev.push({ e: 'pu', p: p.id, k, x: Math.round(u.x), y: Math.round(u.y), m: box ? 1 : 0 });
       break;
     }
   }
-  if (!auth || !s.rules.pu || s.phase !== PHASE.PLAY) return;
+  const rate = PU_RATES[s.rules.pu | 0];
+  if (!auth || !rate || s.phase !== PHASE.PLAY) return;
   if (--s.puT > 0) return;
-  s.puT = PU_TUNE.EVERY_MIN + Math.floor(Math.random() * (PU_TUNE.EVERY_MAX - PU_TUNE.EVERY_MIN));
-  if (list.length >= (s.players.length > 4 ? 2 : 1)) return;
+  s.puT = rate.min + Math.floor(Math.random() * (rate.max - rate.min));
+  if (list.length >= (s.players.length > 4 ? rate.capBig : rate.cap)) return;
   const f = s.field;
   for (let tries = 0; tries < 12; tries++) {
     const x = (Math.random() * 2 - 1) * (f.hw - 140);
     const y = (Math.random() * 2 - 1) * (f.hh - 60);
     let ok = Math.hypot(x - s.ball.x, y - s.ball.y) > 80;
     for (const p of s.players) if (Math.hypot(x - p.x, y - p.y) < 90) ok = false;
+    for (const u of list) if (Math.hypot(x - u.x, y - u.y) < 120) ok = false;
     if (!ok) continue;
-    const k = 1 + Math.floor(Math.random() * 5);
+    const k = pickPowerUp(Math.random);
     const id = s.puId++;
-    list.push({ id, k, x: Math.round(x), y: Math.round(y), t: 0 });
-    ev.push({ e: 'pus', k, x: Math.round(x), y: Math.round(y) });
+    const u = { id, k, x: Math.round(x), y: Math.round(y), t: 0, m: 0 };
+    if (k === PU.MYSTERY) u.m = pickPowerUp(Math.random, 'mw');
+    list.push(u);
+    ev.push({ e: 'pus', k, x: u.x, y: u.y });
     break;
   }
 }
@@ -364,7 +474,11 @@ function powerUps(s, auth, ev) {
  */
 function closeControl(s, p, d) {
   const b = s.ball;
-  if (d > radius(p) + B.R + 6 || p.kcd > 0 || s.phase === PHASE.COUNTDOWN) return;
+  if (p.eff === PU.MAGNET) {
+    magnet(s, p, d);
+    return;
+  }
+  if (d > radius(p) + B.R + 6 || p.kcd > 0 || p.st > 0 || s.phase === PHASE.COUNTDOWN) return;
   const rvx = b.vx - p.vx;
   const rvy = b.vy - p.vy;
   if (rvx * rvx + rvy * rvy > K.CONTROL_REL * K.CONTROL_REL) return;
@@ -373,6 +487,33 @@ function closeControl(s, p, d) {
   }
   b.vx -= rvx * K.CONTROL;
   b.vy -= rvy * K.CONTROL;
+}
+
+/**
+ * Magnet: a slow (relative) ball within reach is drawn to the player's feet and swung
+ * around the body to the front, so it follows every turn, even when an opponent is close.
+ * Shots are not caught.
+ */
+function magnet(s, p, d) {
+  const b = s.ball;
+  const front = radius(p) + B.R + 1;
+  if (d > front + PU_TUNE.MAG_RANGE || p.kcd > 0 || p.st > 0 || s.phase === PHASE.COUNTDOWN) return;
+  const rvx = b.vx - p.vx;
+  const rvy = b.vy - p.vy;
+  if (rvx * rvx + rvy * rvy > PU_TUNE.MAG_REL * PU_TUNE.MAG_REL) return;
+  b.vx -= rvx * PU_TUNE.MAG_DAMP;
+  b.vy -= rvy * PU_TUNE.MAG_DAMP;
+  // Aim at a point on the contact circle a little closer to the front than the ball is now:
+  // a ball behind the player orbits around the body instead of pressing into it.
+  const rel = Math.atan2(b.y - p.y, b.x - p.x);
+  const ang = rel + clamp(angleDiff(rel, p.facing), -PU_TUNE.MAG_ORBIT, PU_TUNE.MAG_ORBIT);
+  const tx = p.x + Math.cos(ang) * front - b.x;
+  const ty = p.y + Math.sin(ang) * front - b.y;
+  const td = Math.hypot(tx, ty);
+  if (td < 0.5) return;
+  const pull = PU_TUNE.MAG_PULL * Math.min(1, td / 18);
+  b.vx += (tx / td) * pull;
+  b.vy += (ty / td) * pull;
 }
 
 /** Track who is closest to the ball ("owner") for bots, HUD and stats. */
@@ -387,14 +528,20 @@ function ownership(s, ev) {
       best = p;
     }
   }
+  if (best) closeControl(s, best, bestD + radius(best) - P.R);
+  // A magnet also works from a little further away, unless a teammate already has the ball.
+  for (const p of s.players) {
+    if (p.eff !== PU.MAGNET || p === best || (best && best.team === p.team)) continue;
+    magnet(s, p, Math.hypot(b.x - p.x, b.y - p.y));
+  }
   if (!best) {
     b.owner = -1;
     return;
   }
-  closeControl(s, best, bestD + radius(best) - P.R);
   if (b.owner !== best.id) {
     // Being near the ball is not a touch: only real contact (collision / kick) credits a player.
     b.owner = best.id;
+    b.os = s.tick;
     ev.push({ e: 'trap', p: best.id });
   }
 }
@@ -426,13 +573,32 @@ function cornerArc(f, o, r, e) {
   return vn;
 }
 
+/** An active shield closes the goal mouth: it blocks the first ball that comes in, then breaks. */
+function shields(s, ev) {
+  const b = s.ball;
+  const f = s.field;
+  for (let t = 0; t < 2; t++) {
+    if (s.sh[t] <= 0) continue;
+    const side = t === 0 ? -1 : 1;
+    if (Math.abs(b.y) >= f.gh || b.x * side <= f.hw - B.R || b.vx * side <= 0) continue;
+    const v = Math.abs(b.vx);
+    b.x = side * (f.hw - B.R);
+    b.vx = -b.vx * PU_TUNE.SHIELD_E;
+    b.at = 0;
+    s.sh[t] = 0;
+    ev.push({ e: 'shield', t, y: Math.round(b.y), v: Math.round(v * 10) / 10 });
+  }
+}
+
 function ballWalls(s, ev) {
   const b = s.ball;
   const f = s.field;
   const r = B.R;
   const wallE = b.rub > 0 ? PU_TUNE.RUBBER_WALL_E : B.WALL_E;
+  shields(s, ev);
   const hit = cornerArc(f, b, r, wallE);
   if (hit > 1.5) ev.push({ e: 'wall', v: Math.round(hit * 10) / 10 });
+  if (hit > 0) b.at = 0;
   const inGoalBox = Math.abs(b.x) > f.hw && Math.abs(b.y) < f.gh;
 
   if (inGoalBox) {
@@ -451,6 +617,7 @@ function ballWalls(s, ev) {
       b.x = side * back;
       if (b.vx * side > 0) {
         const sp = Math.abs(b.vx);
+        b.at = 0;
         b.vx = -b.vx * B.NET_E;
         b.vy *= 0.6;
         if (sp > 1) ev.push({ e: 'net', s: side, y: Math.round(b.y), z: 12, v: Math.round(sp * 10) / 10 });
@@ -463,12 +630,14 @@ function ballWalls(s, ev) {
     if (b.vy < 0) {
       if (b.vy < -1.5) ev.push({ e: 'wall', v: Math.round(-b.vy * 10) / 10 });
       b.vy = -b.vy * wallE;
+      b.at = 0;
     }
   } else if (b.y + r > f.hh) {
     b.y = f.hh - r;
     if (b.vy > 0) {
       if (b.vy > 1.5) ev.push({ e: 'wall', v: Math.round(b.vy * 10) / 10 });
       b.vy = -b.vy * wallE;
+      b.at = 0;
     }
   }
   if (Math.abs(b.x) + r > f.hw && Math.abs(b.y) >= f.gh) {
@@ -478,6 +647,7 @@ function ballWalls(s, ev) {
       const sp = Math.abs(b.vx);
       if (sp > 1.5) ev.push({ e: 'wall', v: Math.round(sp * 10) / 10 });
       b.vx = -b.vx * wallE;
+      b.at = 0;
     }
   }
 }
@@ -501,6 +671,7 @@ function ballPosts(s, ev) {
       b.y = py + ny * min;
       const vn = b.vx * nx + b.vy * ny;
       if (vn < 0) {
+        b.at = 0;
         b.vx -= (1 + B.POST_E) * vn * nx;
         b.vy -= (1 + B.POST_E) * vn * ny;
         if (vn < -1) ev.push({ e: 'post', x: px, y: py, v: Math.round(-vn * 10) / 10 });
@@ -509,8 +680,32 @@ function ballPosts(s, ev) {
   }
 }
 
+/**
+ * Aftertouch ("falso"): for a moment after a clean kick, the kicker's sideways stick input
+ * rotates the ball's velocity, so shots can be curved around a defender. Speed is kept.
+ */
+function aftertouch(s) {
+  const b = s.ball;
+  if (b.at <= 0) return;
+  b.at--;
+  const k = findPlayer(s, b.ak);
+  const sp = Math.hypot(b.vx, b.vy);
+  if (!k || sp < AT.MIN_SPEED) return;
+  const [mx, my] = moveInput(k);
+  const side = (b.vx * my - b.vy * mx) / sp; // sideways share of the input, -1..1
+  const mag = Math.abs(side);
+  if (mag <= AT.DEAD) return;
+  const th = Math.sign(side) * ((mag - AT.DEAD) / (1 - AT.DEAD)) * AT.TURN;
+  const c = Math.cos(th);
+  const sn = Math.sin(th);
+  const vx = b.vx * c - b.vy * sn;
+  b.vy = b.vx * sn + b.vy * c;
+  b.vx = vx;
+}
+
 function updateBall(s, ev) {
   const b = s.ball;
+  aftertouch(s);
   const fr = b.fire > 0 ? PU_TUNE.FIRE_FRICTION : b.rub > 0 ? PU_TUNE.RUBBER_FRICTION : B.FRICTION;
   if (b.fire > 0) b.fire--;
   if (b.rub > 0) b.rub--;
@@ -530,6 +725,7 @@ function collidePlayers(s) {
     const a = ps[i];
     for (let j = i + 1; j < n; j++) {
       const c = ps[j];
+      if (ghost(a) || ghost(c)) continue; // ghosts pass through everyone
       const R2 = radius(a) + radius(c);
       let dx = c.x - a.x;
       let dy = c.y - a.y;
@@ -543,21 +739,42 @@ function collidePlayers(s) {
       const d = Math.sqrt(d2);
       const nx = dx / d;
       const ny = dy / d;
-      const overlap = (R2 - d) / 2;
-      a.x -= nx * overlap;
-      a.y -= ny * overlap;
-      c.x += nx * overlap;
-      c.y += ny * overlap;
+      // Heavier bodies (Giant) move less and shove harder.
+      const ia = 1 / mass(a);
+      const ic = 1 / mass(c);
+      const share = (R2 - d) / (ia + ic);
+      a.x -= nx * share * ia;
+      a.y -= ny * share * ia;
+      c.x += nx * share * ic;
+      c.y += ny * share * ic;
       const rvn = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny;
       if (rvn < 0) {
-        const jmp = (-(1 + P.BUMP_E) * rvn) / 2;
-        a.vx -= jmp * nx;
-        a.vy -= jmp * ny;
-        c.vx += jmp * nx;
-        c.vy += jmp * ny;
+        const jmp = (-(1 + P.BUMP_E) * rvn) / (ia + ic);
+        a.vx -= jmp * nx * ia;
+        a.vy -= jmp * ny * ia;
+        c.vx += jmp * nx * ic;
+        c.vy += jmp * ny * ic;
       }
     }
   }
+}
+
+/**
+ * A save: a defender stops an opponent's shot that was on its way into their goal
+ * (straight-line path inside the posts, fast enough to get there).
+ */
+function isSave(s, p) {
+  const b = s.ball;
+  const f = s.field;
+  if (s.phase !== PHASE.PLAY || b.lt < 0 || b.lt === p.team) return false;
+  const side = p.team === 0 ? -1 : 1;
+  const vx = b.vx * side;
+  if (vx <= 0 || Math.hypot(b.vx, b.vy) < 3.6) return false;
+  const dx = f.hw - b.x * side;
+  if (dx <= 0 || dx > f.w * 0.6) return false;
+  if (vx < dx * (1 - B.FRICTION) + 1.5) return false; // would stop before the line
+  const y = b.y + (b.vy * dx) / vx;
+  return Math.abs(y) < f.gh + 4;
 }
 
 function collideBallPlayers(s, ev) {
@@ -587,17 +804,19 @@ function collideBallPlayersOnce(s, bounce, ev) {
     const vn = (b.vx - p.vx) * nx + (b.vy - p.vy) * ny;
     if (vn < 0) {
       const e = bounce ? (b.rub > 0 ? PU_TUNE.RUBBER_PLAYER_E : B.PLAYER_E) : 0;
-      if (bounce && b.fire > 0 && vn < -5) {
-        // A fireball blasts the player it hits.
+      if (bounce && vn < -0.6 && isSave(s, p)) ev.push({ e: 'save', p: p.id, v: Math.round(Math.hypot(b.vx, b.vy) * 10) / 10 });
+      if (bounce && b.fire > 0 && vn < -5 && !ghost(p)) {
+        // A fireball blasts the player it hits and leaves them dazed.
         p.vx -= nx * PU_TUNE.FIRE_KNOCK;
         p.vy -= ny * PU_TUNE.FIRE_KNOCK;
+        stun(p, PU_TUNE.FIRE_STUN);
         ev.push({ e: 'blast', p: p.id });
       }
       b.vx -= (1 + e) * vn * nx;
       b.vy -= (1 + e) * vn * ny;
       p.vx += vn * nx * 0.08;
       p.vy += vn * ny * 0.08;
-      if (vn < -0.6) touch(s, p);
+      if (vn < -0.6) touch(s, p, ev);
       if (bounce && vn < -1.6) ev.push({ e: 'tap', p: p.id, v: Math.round(-vn * 10) / 10 });
     }
   }
@@ -785,6 +1004,10 @@ export function step(s, auth) {
   playerBounds(s);
   ownership(s, ev);
   if (s.pu.length || s.rules.pu) powerUps(s, auth, ev);
+  if (s.phase === PHASE.PLAY || s.phase === PHASE.KICKOFF) {
+    if (s.sh[0] > 0) s.sh[0]--;
+    if (s.sh[1] > 0) s.sh[1]--;
+  }
   if (s.phase === PHASE.KICKOFF) kickoffRules(s);
   phaseLogic(s, auth, ev);
   return ev;

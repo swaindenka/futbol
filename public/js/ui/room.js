@@ -1,7 +1,9 @@
 // Room lobby screen: teams, kits, match settings, chat, start.
 
 import { $, $$, el, esc, icon, seg, toggle, copyText, toast } from './dom.js';
-import { KITS, SETTING_OPTIONS, MAX_ROOM_PLAYERS } from '../../shared/constants.js';
+import {
+  KITS, SETTING_OPTIONS, MAX_ROOM_PLAYERS, PU_LEVEL_NAMES, puLevel,
+} from '../../shared/constants.js';
 import { BOT_LEVEL_NAMES } from '../../shared/bot.js';
 
 const FIELD_NAMES = { auto: 'Otomatik', small: 'Küçük', medium: 'Orta', large: 'Büyük' };
@@ -192,7 +194,7 @@ export class RoomScreen {
     body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Boş yerleri botlarla doldur' }), toggle(st.bots, (v) => this.sendSettings({ bots: v }), { disabled: dis, label: 'Botlar' })));
     if (st.bots) body.append(row('Bot seviyesi', seg(SETTING_OPTIONS.botLevel.map((v) => ({ v, label: BOT_LEVEL_NAMES[v] })), st.botLevel, (v) => this.sendSettings({ botLevel: v }), { disabled: dis })));
     body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Altın gol (beraberlikte uzatma)' }), toggle(st.goldenGoal, (v) => this.sendSettings({ goldenGoal: v }), { disabled: dis, label: 'Altın gol' })));
-    body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Rastgele güçlendirmeler (ateş topu, dev, hız…)' }), toggle(st.powerups !== false, (v) => this.sendSettings({ powerups: v }), { disabled: dis, label: 'Güçlendirmeler' })));
+    body.append(row('Güçlendirmeler', seg(SETTING_OPTIONS.powerups.map((v) => ({ v, label: PU_LEVEL_NAMES[v] })), puLevel(st.powerups), (v) => this.sendSettings({ powerups: v }), { disabled: dis })));
     body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Gol tekrarları' }), toggle(st.replays, (v) => this.sendSettings({ replays: v }), { disabled: dis, label: 'Tekrarlar' })));
     body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Oda listede görünsün' }), toggle(room.isPublic, (v) => this.sendSettings({ isPublic: v }), { disabled: dis, label: 'Herkese açık' })));
   }

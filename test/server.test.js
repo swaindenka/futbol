@@ -275,3 +275,24 @@ test('rematch: late inputs from the previous match do not freeze a player', asyn
   a.ws.close();
   void j;
 });
+
+test('power-up rate setting: levels are accepted, old boolean values still work', async () => {
+  const a = await client('Kaos', 'tok-pu-level-01');
+  a.send({ t: 'create', name: 'Kaos', isPublic: false });
+  await a.wait((m) => m.t === 'joined');
+  a.send({ t: 'settings', settings: { powerups: 3 } });
+  await a.wait((m) => m.t === 'room' && m.room.settings.powerups === 3);
+  a.send({ t: 'settings', settings: { powerups: false } });
+  await a.wait((m) => m.t === 'room' && m.room.settings.powerups === 0);
+  a.send({ t: 'settings', settings: { powerups: true } });
+  await a.wait((m) => m.t === 'room' && m.room.settings.powerups === 2);
+  a.send({ t: 'settings', settings: { powerups: 3 } });
+  await a.wait((m) => m.t === 'room' && m.room.settings.powerups === 3);
+  a.send({ t: 'start' });
+  const start = await a.wait((m) => m.t === 'start');
+  assert.equal(start.rules.pu, 3);
+  const snap = await a.wait((m) => m.t === 's');
+  assert.equal(snap.d.length, 16, 'snapshot carries the shield fields');
+  a.send({ t: 'leave' });
+  a.ws.close();
+});
