@@ -367,7 +367,28 @@ export class BotBrain {
     void dir;
   }
 
+  /** Detour to a nearby power-up if we are the closest teammate to it. */
+  grabPowerUp(s, me, ctx, o) {
+    if (!s.pu || !s.pu.length || s.phase !== PHASE.PLAY) return false;
+    let best = null;
+    let bd = 220;
+    for (const u of s.pu) {
+      const d = Math.hypot(u.x - me.x, u.y - me.y);
+      if (d >= bd) continue;
+      let closest = true;
+      for (const m of ctx.mates) if (m !== me && Math.hypot(u.x - m.x, u.y - m.y) < d) closest = false;
+      if (closest) {
+        bd = d;
+        best = u;
+      }
+    }
+    if (!best) return false;
+    this.moveTo(o, me, best.x, best.y, true);
+    return true;
+  }
+
   support(s, me, ctx, o) {
+    if (this.grabPowerUp(s, me, ctx, o)) return;
     this.steady = true;
     const { f, b, dir, opps, outfield, rank, mates, ownX } = ctx;
     const m = Math.max(1, outfield.length);

@@ -503,6 +503,15 @@ body.show-emotes .emote-bar, .emote-bar:hover { opacity: 1; }
   padding: 18px; border-radius: var(--radius); background: rgba(8, 12, 22, .92); border: 1px solid var(--line-2);
   box-shadow: var(--shadow); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
 }
+.pu-chips { position: absolute; left: 50%; top: calc(86px + var(--safe-t)); transform: translateX(-50%); display: flex; gap: 8px; pointer-events: none; }
+.pu-chip {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px; padding: 6px 14px 8px; border-radius: 12px;
+  background: rgba(8, 12, 22, .85); border: 1px solid var(--pc); box-shadow: 0 0 18px color-mix(in srgb, var(--pc) 45%, transparent);
+  font-family: var(--display); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--pc);
+}
+.pu-chip small { font-family: var(--body); font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--muted); font-weight: 600; }
+.pu-chip i { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--pc); transition: width .25s linear; }
+body.touch-ui .pu-chips { top: calc(52px + var(--safe-t)); }
 .hint { position: absolute; left: 50%; bottom: calc(64px + var(--safe-b)); transform: translateX(-50%); pointer-events: none; }
 .hint div { padding: 10px 16px; border-radius: 12px; background: rgba(8, 12, 22, .85); border: 1px solid var(--line-2); font-size: 13px; font-weight: 600; animation: feed-in .4s ease both; white-space: nowrap; }
 .hint div.out { animation: feed-out .4s ease forwards; }

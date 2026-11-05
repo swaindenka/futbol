@@ -233,7 +233,7 @@ class App {
     const kits = [0, 4];
     this.setSession(new Session(this, {
       mode: 'practice',
-      settings: { ...DEFAULT_SETTINGS, duration: opts.duration || 180, goldenGoal: true, kits },
+      settings: { ...DEFAULT_SETTINGS, duration: opts.duration || 180, goldenGoal: true, powerups: opts.powerups !== false, kits },
       teamSize: opts.teamSize || 3,
       level: opts.level ?? 1,
     }));

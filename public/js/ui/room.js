@@ -192,6 +192,7 @@ export class RoomScreen {
     body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Boş yerleri botlarla doldur' }), toggle(st.bots, (v) => this.sendSettings({ bots: v }), { disabled: dis, label: 'Botlar' })));
     if (st.bots) body.append(row('Bot seviyesi', seg(SETTING_OPTIONS.botLevel.map((v) => ({ v, label: BOT_LEVEL_NAMES[v] })), st.botLevel, (v) => this.sendSettings({ botLevel: v }), { disabled: dis })));
     body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Altın gol (beraberlikte uzatma)' }), toggle(st.goldenGoal, (v) => this.sendSettings({ goldenGoal: v }), { disabled: dis, label: 'Altın gol' })));
+    body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Rastgele güçlendirmeler (ateş topu, dev, hız…)' }), toggle(st.powerups !== false, (v) => this.sendSettings({ powerups: v }), { disabled: dis, label: 'Güçlendirmeler' })));
     body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Gol tekrarları' }), toggle(st.replays, (v) => this.sendSettings({ replays: v }), { disabled: dis, label: 'Tekrarlar' })));
     body.append(el('div', { class: 'toggle-row' }, el('span', { text: 'Oda listede görünsün' }), toggle(room.isPublic, (v) => this.sendSettings({ isPublic: v }), { disabled: dis, label: 'Herkese açık' })));
   }

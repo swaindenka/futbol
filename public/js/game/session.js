@@ -4,13 +4,13 @@
 //  - 'demo'     : bots only, used as the animated menu background
 
 import {
-  makeState, addPlayer, resetKickoff, step, findPlayer,
+  makeState, addPlayer, resetKickoff, step, findPlayer, radius,
 } from '../../shared/physics.js';
 import { decodeSnapshot } from '../../shared/protocol.js';
 import { BotBrain } from '../../shared/bot.js';
 import { MatchStats } from '../../shared/stats.js';
 import {
-  KITS, PHASE, TICK_MS, TIMING, EMOTES, BOT_NAMES, fieldForTeamSize,
+  KITS, PHASE, TICK_MS, TIMING, EMOTES, BOT_NAMES, PU, PU_INFO, fieldForTeamSize,
 } from '../../shared/constants.js';
 import { lerp } from '../../shared/util.js';
 import { Effects } from './effects.js';
@@ -57,6 +57,7 @@ export class Session {
     this.replay = null;
     this.replayTimer = null;
     this.emotes = new Map();
+    this.rad = new Map();
     this.ended = false;
     this.destroyed = false;
     this.lastCount = -1;
@@ -206,7 +207,7 @@ export class Session {
     if (s.tick <= this.effectsTick) return;
     this.effectsTick = s.tick;
     for (const e of ev) {
-      if (e.p === this.myId && (e.e === 'kick' || e.e === 'tap')) this.handleEvent(e);
+      if (e.p === this.myId && (e.e === 'kick' || e.e === 'tap' || e.e === 'pu')) this.handleEvent(e);
     }
   }
 
@@ -285,7 +286,7 @@ export class Session {
     if (reset) this.savePrev();
 
     for (const e of ns.events) {
-      if (e.p === this.myId && (e.e === 'kick' || e.e === 'tap')) continue;
+      if (e.p === this.myId && (e.e === 'kick' || e.e === 'tap' || e.e === 'pu')) continue;
       this.handleEvent(e);
     }
     if (this.replay && ns.phase !== PHASE.GOAL) this.stopReplay();
@@ -310,13 +311,50 @@ export class Session {
         if (audio) audio.kick(e.v, 'shot');
         fx.kick(b.x, b.y, e.v, a);
         if (e.v > 12.5) fx.addShake(3);
+        if (e.fire) {
+          if (audio) audio.boom();
+          fx.addShake(7);
+          fx.burst(b.x, b.y, 'rgba(255,150,40,0.9)');
+          for (let i = 0; i < 14; i++) fx.flame(b.x, b.y, 6, true);
+        }
+        break;
+      }
+      case 'pus':
+        if (audio) audio.chime();
+        fx.ring(e.x, e.y, `${PU_INFO[e.k].color === '#fff' ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.7)'}`, 6, 40, 0.6);
+        break;
+      case 'pu': {
+        const info = PU_INFO[e.k];
+        if (audio) audio.powerUp(e.k);
+        fx.burst(e.x, e.y, info.color);
+        if (hud) {
+          const who = e.p === this.myId ? 'Sen' : this.name(e.p);
+          const what = e.k === PU.ICE ? 'rakipleri dondurdu!' : e.k === PU.RUBBER ? 'topu lastik yaptı!' : `${info.name} aldı!`;
+          hud.feed(`${who}: ${what}`, 'info', info.color);
+          if (e.p === this.myId) hud.popText(info.name.toLocaleUpperCase('tr'), info.color);
+          else {
+            const me = this.myPlayer();
+            const pl = findPlayer(this.state, e.p);
+            if (e.k === PU.ICE && me && pl && pl.team !== me.team) hud.popText('DONDUN!', info.color);
+          }
+        }
+        break;
+      }
+      case 'blast': {
+        const v = findPlayer(this.state, e.p);
+        if (audio) audio.boom();
+        if (v) fx.burst(v.x, v.y, 'rgba(255,150,40,0.9)');
+        fx.addShake(5);
         break;
       }
       case 'tap':
         if (audio) audio.touch(e.v);
         break;
       case 'wall': {
-        if (audio) audio.wall(e.v);
+        if (audio) {
+          if (b.rub > 0) audio.boing(e.v);
+          else audio.wall(e.v);
+        }
         // Shot that just missed the goal: the crowd gasps.
         const f = this.state.field;
         if (audio && e.v > 6 && Math.abs(b.x) > f.hw - 30 && Math.abs(b.y) < f.gh + 70) audio.crowdOoh();
@@ -456,7 +494,14 @@ export class Session {
     const s = this.state;
     const players = s.players.map((p) => {
       const pos = this.renderPos(p, alpha);
-      return this.buildPlayerView(p.id, p.team, pos.x, pos.y, p.facing, p.vx, p.vy, { ct: p.ct });
+      // Ease the body size so the Giant power-up grows / shrinks smoothly on screen.
+      const target = radius(p);
+      const cur = this.rad.get(p.id) ?? target;
+      const r = cur + (target - cur) * 0.18;
+      this.rad.set(p.id, r);
+      return this.buildPlayerView(p.id, p.team, pos.x, pos.y, p.facing, p.vx, p.vy, {
+        ct: p.ct, r, eff: p.eff, et: p.et, sl: p.sl,
+      });
     });
     const b = s.ball;
     const pb = this.prevBall;
@@ -465,8 +510,10 @@ export class Session {
       y: lerp(pb.y, b.y, alpha) + this.ballOff.y,
       z: 0,
       speed: Math.hypot(b.vx, b.vy),
+      fire: b.fire,
+      rub: b.rub,
     };
-    return { field: s.field, kits: this.kits, phase: s.phase, ko: s.ko, players, ball };
+    return { field: s.field, kits: this.kits, phase: s.phase, ko: s.ko, players, ball, pu: s.pu };
   }
 
   replayView(dt) {
@@ -531,6 +578,11 @@ export class Session {
     for (const [id, em] of this.emotes) {
       em.age += dt;
       if (em.age > 2.6) this.emotes.delete(id);
+    }
+    // Fire: the ball on fire leaves flames, a player holding a fireball smoulders.
+    if (this.state.ball.fire > 0) for (let i = 0; i < 2; i++) this.fx.flame(this.state.ball.x, this.state.ball.y, 6);
+    for (const p of this.state.players) {
+      if (p.eff === PU.FIRE && Math.random() < 0.35) this.fx.flame(p.x, p.y, 10);
     }
     this.fx.update(dt);
 

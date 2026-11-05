@@ -2,7 +2,7 @@
 
 import { Camera, RAIL_H, RAIL_T, TOKEN_H } from './camera.js';
 import { buildArena, buildBallTile, buildVignette, shade, rgba, APRON } from './art.js';
-import { P, B, PHASE } from '../../shared/constants.js';
+import { P, B, PHASE, PU, PU_INFO, PU_TUNE } from '../../shared/constants.js';
 
 const TAU = Math.PI * 2;
 const LIME = '#b6ff3b';
@@ -101,11 +101,13 @@ export class Renderer {
     const ents = [];
     for (const p of view.players) ents.push({ y: p.y, k: 0, o: p });
     ents.push({ y: view.ball.y, k: 1, o: view.ball });
+    for (const u of view.pu || []) ents.push({ y: u.y, k: 3, o: u });
     for (const sx of [-1, 1]) for (const sy of [-1, 1]) ents.push({ y: sy * f.gh, k: 2, o: { sx, sy } });
     ents.sort((u, v) => u.y - v.y);
     for (const e of ents) {
       if (e.k === 0) this.drawPlayer(e.o, view);
       else if (e.k === 1) this.drawBall(e.o, view);
+      else if (e.k === 3) this.drawPowerUp(e.o);
       else this.drawPost(f, e.o.sx, e.o.sy);
     }
 
@@ -154,13 +156,13 @@ export class Renderer {
         ctx.fillStyle = 'rgba(0,0,0,0.09)';
         for (const [ox, oy] of [[-9, -7], [9, -7], [-9, 8], [9, 8]]) {
           ctx.beginPath();
-          ctx.arc(p.x + ox, p.y + oy, P.R * 1.08, 0, TAU);
+          ctx.arc(p.x + ox, p.y + oy, (p.r || P.R) * 1.08, 0, TAU);
           ctx.fill();
         }
       }
       ctx.fillStyle = 'rgba(0,0,0,0.38)';
       ctx.beginPath();
-      ctx.arc(p.x + 1.5, p.y + 2.5, P.R * 1.04, 0, TAU);
+      ctx.arc(p.x + 1.5, p.y + 2.5, (p.r || P.R) * 1.04, 0, TAU);
       ctx.fill();
     }
     const b = view.ball;
@@ -170,11 +172,59 @@ export class Renderer {
     ctx.arc(b.x + b.z * 0.08, b.y + b.z * 0.1 + 1.5, B.R * (1.05 - hz), 0, TAU);
     ctx.fill();
 
+    // Power-up spots on the ground
+    for (const u of view.pu || []) {
+      const info = PU_INFO[u.k];
+      const pulse = 0.5 + 0.5 * Math.sin(this.time * 5 + u.id);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.arc(u.x, u.y, 10, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = rgba(info.color, 0.35 + pulse * 0.4);
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(u.x, u.y, 18 + pulse * 6, 0, TAU);
+      ctx.stroke();
+    }
+
+    // Power-up auras
+    for (const p of view.players) {
+      const R = p.r || P.R;
+      if (p.sl > 0) {
+        ctx.fillStyle = 'rgba(120,220,255,0.18)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, R + 8, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(170,235,255,0.85)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 5]);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, R + 8, this.time * 2, this.time * 2 + TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (p.eff) {
+        const info = PU_INFO[p.eff];
+        const pulse = 0.5 + 0.5 * Math.sin(this.time * 9);
+        ctx.fillStyle = rgba(info.color, 0.12 + pulse * 0.1);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, R + 11, 0, TAU);
+        ctx.fill();
+        // Remaining time arc
+        const left = Math.max(0, p.et / info.ticks);
+        ctx.strokeStyle = info.color;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, R + 11, -Math.PI / 2, -Math.PI / 2 + left * TAU);
+        ctx.stroke();
+      }
+    }
+
     // Rings under players
     for (const p of view.players) {
       const kit = view.kits[p.team];
       if (p.me) {
-        const pr = P.R + 6 + Math.sin(this.time * 5) * 1.5;
+        const pr = (p.r || P.R) + 6 + Math.sin(this.time * 5) * 1.5;
         ctx.fillStyle = 'rgba(182,255,59,0.10)';
         ctx.beginPath();
         ctx.arc(p.x, p.y, pr + 4, 0, TAU);
@@ -188,7 +238,7 @@ export class Renderer {
         ctx.strokeStyle = rgba(kit.primary, 0.55);
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, P.R + 3.5, 0, TAU);
+        ctx.arc(p.x, p.y, (p.r || P.R) + 3.5, 0, TAU);
         ctx.stroke();
       }
       if (p.ct) {
@@ -197,7 +247,7 @@ export class Renderer {
         ctx.strokeStyle = `rgba(255,255,255,${pulse})`;
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, P.R + 5, 0, TAU);
+        ctx.arc(p.x, p.y, (p.r || P.R) + 5, 0, TAU);
         ctx.stroke();
       }
     }
@@ -208,11 +258,11 @@ export class Renderer {
       const dx = b.x - me.x;
       const dy = b.y - me.y;
       const d = Math.hypot(dx, dy);
-      const near = P.R + B.R + 34;
+      const near = (me.r || P.R) + B.R + 34;
       if (d < near && d > 1) {
         const ux = dx / d;
         const uy = dy / d;
-        const fade = 1 - Math.max(0, d - (P.R + B.R + 6)) / 28;
+        const fade = 1 - Math.max(0, d - ((me.r || P.R) + B.R + 6)) / 28;
         const a = (me.ct ? 0.85 : 0.45) * Math.max(0, Math.min(1, fade));
         ctx.strokeStyle = `rgba(255,255,255,${a})`;
         ctx.lineWidth = 2.5;
@@ -534,15 +584,16 @@ export class Renderer {
     const z = cam.zoom;
     const [gx, gy] = cam.project(p.x, p.y, 0);
     const [tx, ty, s] = cam.project(p.x, p.y, TOKEN_H);
-    const rx = P.R * z;
-    const ry = P.R * z * cam.tilt;
+    const R = p.r || P.R;
+    const rx = R * z;
+    const ry = R * z * cam.tilt;
     const rxt = rx * s;
     const ryt = ry * s;
     if (gx < -60 || gx > this.W + 60 || gy < -80 || gy > this.H + 60) return;
 
     // Motion ghosts while sliding / sprinting fast
     const sp = Math.hypot(p.vx, p.vy);
-    if (sp > 5) {
+    if (sp > 4.3) {
       for (let i = 1; i <= 2; i++) {
         const [hx, hy] = cam.project(p.x - p.vx * i * 2.2, p.y - p.vy * i * 2.2, TOKEN_H * 0.5);
         ctx.fillStyle = rgba(kit.primary, 0.16 / i);
@@ -572,7 +623,7 @@ export class Renderer {
     ctx.stroke();
 
     // Top face, rotated with facing
-    const r = P.R * z * s;
+    const r = R * z * s;
     ctx.save();
     ctx.translate(tx, ty);
     ctx.scale(1, cam.tilt);
@@ -676,7 +727,7 @@ export class Renderer {
     const r = B.R * cam.zoom * s;
 
     if (tr.length > 1 && this.quality !== 'low') {
-      const hot = speed > 12.2;
+      const hot = speed > 12.2 || b.fire > 0;
       ctx.lineCap = 'round';
       for (let i = 1; i < tr.length; i++) {
         const t = i / tr.length;
@@ -692,7 +743,7 @@ export class Renderer {
       ctx.lineCap = 'butt';
     }
 
-    if (speed > 12.2) {
+    if (speed > 12.2 || b.fire > 0) {
       const glow = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 2.4);
       glow.addColorStop(0, 'rgba(255,190,90,0.45)');
       glow.addColorStop(1, 'rgba(255,120,40,0)');
@@ -727,7 +778,120 @@ export class Renderer {
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';
     ctx.lineWidth = 1;
     ctx.stroke();
+    if (b.rub > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(this.time * 12);
+      ctx.strokeStyle = `rgba(255,79,163,${0.55 + pulse * 0.4})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 3 + pulse * 2, 0, TAU);
+      ctx.stroke();
+    }
     void view;
+  }
+
+  /** Floating power-up badge. */
+  drawPowerUp(u) {
+    const { ctx, cam } = this;
+    const info = PU_INFO[u.k];
+    const bob = Math.sin(this.time * 3 + u.id) * 3;
+    const [x, y, s] = cam.project(u.x, u.y, 20 + bob);
+    const r = 12 * cam.zoom * s;
+    // Blink during the last two seconds
+    if (u.t > PU_TUNE.LIFE - 120 && Math.floor(this.time * 8) % 2 === 0) return;
+    const pop = Math.min(1, u.t / 12);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(pop, pop);
+    const glow = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 2.4);
+    glow.addColorStop(0, rgba(info.color, 0.55));
+    glow.addColorStop(1, rgba(info.color, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 2.4, 0, TAU);
+    ctx.fill();
+    const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
+    g.addColorStop(0, shade(info.color, 0.45));
+    g.addColorStop(1, shade(info.color, -0.25));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = Math.max(1.5, r * 0.14);
+    ctx.stroke();
+    ctx.rotate(Math.sin(this.time * 2 + u.id) * 0.15);
+    this.puIcon(u.k, r * 0.62);
+    ctx.restore();
+  }
+
+  /** White vector glyph for a power-up kind, centred at the origin. */
+  puIcon(k, s) {
+    const { ctx } = this;
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#fff';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    if (k === PU.FIRE) {
+      ctx.moveTo(0, -s);
+      ctx.bezierCurveTo(s * 0.95, -s * 0.15, s * 0.9, s * 0.85, 0, s * 0.9);
+      ctx.bezierCurveTo(-s * 0.9, s * 0.85, -s * 0.95, -s * 0.15, 0, -s);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,140,40,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 0.2);
+      ctx.bezierCurveTo(s * 0.45, s * 0.25, s * 0.4, s * 0.75, 0, s * 0.75);
+      ctx.bezierCurveTo(-s * 0.4, s * 0.75, -s * 0.45, s * 0.25, 0, -s * 0.2);
+      ctx.fill();
+    } else if (k === PU.GIANT) {
+      ctx.lineWidth = s * 0.32;
+      ctx.moveTo(-s * 0.7, -s * 0.05);
+      ctx.lineTo(0, -s * 0.75);
+      ctx.lineTo(s * 0.7, -s * 0.05);
+      ctx.moveTo(-s * 0.7, s * 0.7);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(s * 0.7, s * 0.7);
+      ctx.stroke();
+    } else if (k === PU.SPEED) {
+      ctx.moveTo(s * 0.2, -s);
+      ctx.lineTo(-s * 0.6, s * 0.15);
+      ctx.lineTo(-s * 0.02, s * 0.15);
+      ctx.lineTo(-s * 0.25, s);
+      ctx.lineTo(s * 0.62, -s * 0.18);
+      ctx.lineTo(s * 0.05, -s * 0.18);
+      ctx.closePath();
+      ctx.fill();
+    } else if (k === PU.ICE) {
+      ctx.lineWidth = s * 0.2;
+      for (let i = 0; i < 3; i++) {
+        const a = (i * Math.PI) / 3;
+        const cx = Math.cos(a) * s;
+        const cy = Math.sin(a) * s;
+        ctx.moveTo(-cx, -cy);
+        ctx.lineTo(cx, cy);
+        for (const sg of [-1, 1]) {
+          const bx = cx * 0.6 * sg;
+          const by = cy * 0.6 * sg;
+          ctx.moveTo(bx, by);
+          ctx.lineTo(bx + Math.cos(a + 2.4) * s * 0.3 * sg, by + Math.sin(a + 2.4) * s * 0.3 * sg);
+          ctx.moveTo(bx, by);
+          ctx.lineTo(bx + Math.cos(a - 2.4) * s * 0.3 * sg, by + Math.sin(a - 2.4) * s * 0.3 * sg);
+        }
+      }
+      ctx.stroke();
+    } else {
+      ctx.arc(-s * 0.15, s * 0.2, s * 0.5, 0, TAU);
+      ctx.fill();
+      ctx.lineWidth = s * 0.18;
+      ctx.beginPath();
+      ctx.arc(-s * 0.15, s * 0.2, s * 0.95, -1.35, -0.25);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(-s * 0.15, s * 0.2, s * 1.35, -1.25, -0.4);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
   }
 
   // ---------------------------------------------------------------------------
@@ -742,6 +906,17 @@ export class Renderer {
         ctx.fillStyle = `${p.c}${0.35 * (1 - t)})`;
         ctx.beginPath();
         ctx.ellipse(sx, sy, p.size * z, p.size * z * cam.tilt, 0, 0, TAU);
+        ctx.fill();
+      } else if (p.k === 'flame') {
+        // Normal blending: additive turns orange into lime on top of the green grass.
+        const r = p.size * z * (1 - t * 0.4);
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+        g.addColorStop(0, `rgba(255,236,150,${0.95 * (1 - t)})`);
+        g.addColorStop(0.45, `rgba(${p.c},${0.8 * (1 - t)})`);
+        g.addColorStop(1, `rgba(${p.c},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, TAU);
         ctx.fill();
       } else if (p.k === 'star') {
         ctx.fillStyle = p.c;
@@ -792,8 +967,8 @@ export class Renderer {
       const [tx, ty, s] = cam.project(p.x, p.y, TOKEN_H);
       if (gx < -80 || gx > this.W + 80 || gy < -100 || gy > this.H + 60) continue;
       const kit = view.kits[p.team];
-      const ryt = P.R * cam.zoom * cam.tilt * s;
-      const rxt = P.R * cam.zoom * s;
+      const ryt = (p.r || P.R) * cam.zoom * cam.tilt * s;
+      const rxt = (p.r || P.R) * cam.zoom * s;
       let y = ty - ryt - 12;
 
       const name = p.name || '';

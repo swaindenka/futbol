@@ -4,7 +4,7 @@
 // sent over the wire and re-simulated.
 
 import {
-  P, B, K, BTN, PHASE, TIMING, TICK_RATE, FIELDS, GOAL_DEPTH, CROSSBAR_Z, POST_R,
+  P, B, K, BTN, PHASE, TIMING, TICK_RATE, FIELDS, GOAL_DEPTH, CROSSBAR_Z, POST_R, PU, PU_INFO, PU_TUNE,
 } from './constants.js';
 import { clamp, turnToward } from './util.js';
 
@@ -38,6 +38,8 @@ export function makeBall() {
   return {
     x: 0, y: 0, z: 0, vx: 0, vy: 0, owner: -1, last: -1, prev: -1, lt: -1,
     tk: [-1, -1], tkt: [-1, -1], tka: [-1, -1],
+    fire: 0, // fireball ticks left
+    rub: 0, // rubber-ball ticks left
   };
 }
 
@@ -58,6 +60,9 @@ export function makePlayer(id, team, slot) {
     ct: 0, // 1 while the kick is armed (button pressed, not used yet)
     pb: 0, // previous buttons
     kcd: 0, // kick cooldown
+    eff: 0, // power-up effect (PU.*) and ticks left
+    et: 0,
+    sl: 0, // slowed by ice: ticks left
     in: makeInput(team),
   };
 }
@@ -81,9 +86,13 @@ export function makeState(fieldKey, settings) {
       gg: settings.goldenGoal !== false,
       limit: settings.scoreLimit | 0,
       pause: settings.replays ? TIMING.GOAL_PAUSE_REPLAY : TIMING.GOAL_PAUSE,
+      pu: settings.powerups !== false,
     },
     ball: makeBall(),
     players: [],
+    pu: [], // power-ups on the pitch: { id, k, x, y, t }
+    puId: 1,
+    puT: PU_TUNE.FIRST,
   };
 }
 
@@ -91,6 +100,11 @@ export function findPlayer(s, id) {
   const ps = s.players;
   for (let i = 0; i < ps.length; i++) if (ps[i].id === id) return ps[i];
   return null;
+}
+
+/** Body radius: bigger while the Giant power-up is active. */
+export function radius(p) {
+  return p.eff === PU.GIANT ? P.R * PU_TUNE.GIANT_SCALE : P.R;
 }
 
 export function teamPlayers(s, team) {
@@ -159,9 +173,13 @@ export function resetKickoff(s) {
     p.facing = p.team === 0 ? 0 : Math.PI;
     p.ct = 0;
     p.kcd = 0;
+    p.eff = p.et = p.sl = 0;
     p.pb = p.in.b | 0;
   }
+  s.pu = [];
+  s.puT = PU_TUNE.FIRST;
   const b = s.ball;
+  b.fire = b.rub = 0;
   b.x = b.y = b.z = 0;
   b.vx = b.vy = 0;
   b.owner = -1;
@@ -175,7 +193,8 @@ export function resetKickoff(s) {
 export function inReach(p, b) {
   const dx = b.x - p.x;
   const dy = b.y - p.y;
-  return dx * dx + dy * dy <= REACH * REACH;
+  const reach = REACH + radius(p) - P.R;
+  return dx * dx + dy * dy <= reach * reach;
 }
 
 function touch(s, p) {
@@ -197,7 +216,8 @@ function kickImpulse(p, b) {
   const dx = b.x - p.x;
   const dy = b.y - p.y;
   const d = Math.hypot(dx, dy) || 1;
-  return { x: (dx / d) * K.POWER + p.vx * K.CARRY, y: (dy / d) * K.POWER + p.vy * K.CARRY };
+  const pw = K.POWER * (p.eff === PU.FIRE ? PU_TUNE.FIRE_MUL : 1);
+  return { x: (dx / d) * pw + p.vx * K.CARRY, y: (dy / d) * pw + p.vy * K.CARRY };
 }
 
 function updatePlayer(s, p, frozen) {
@@ -206,6 +226,8 @@ function updatePlayer(s, p, frozen) {
   const pressed = btn & ~p.pb;
   p.pb = btn;
   if (p.kcd > 0) p.kcd--;
+  if (p.et > 0 && --p.et === 0) p.eff = 0;
+  if (p.sl > 0) p.sl--;
 
   if (frozen) {
     p.vx *= 0.7;
@@ -227,7 +249,9 @@ function updatePlayer(s, p, frozen) {
     my /= len;
   }
   const moving = len > 0.08;
-  const max = P.SPEED * (btn & BTN.KICK ? P.KICK_SLOW : 1);
+  let max = P.SPEED * (btn & BTN.KICK ? P.KICK_SLOW : 1);
+  if (p.eff === PU.SPEED) max *= PU_TUNE.SPEED_MUL;
+  if (p.sl > 0) max *= PU_TUNE.SLOW_MUL;
   if (moving) {
     p.vx += (mx * max - p.vx) * P.ACCEL;
     p.vy += (my * max - p.vy) * P.ACCEL;
@@ -265,8 +289,71 @@ function kicks(s, ev) {
     p.ct = 0;
     p.kcd = K.KICK_CD;
     touch(s, p);
+    let fire = 0;
+    if (p.eff === PU.FIRE) {
+      // The fireball is used up by this kick.
+      b.fire = PU_TUNE.FIRE_TICKS;
+      p.eff = p.et = 0;
+      fire = 1;
+    }
     const v = Math.round(Math.hypot(vx, vy) * 10) / 10;
-    ev.push({ e: 'kick', p: p.id, v, a: Math.round(Math.atan2(vy, vx) * 100) / 100 });
+    ev.push({ e: 'kick', p: p.id, v, a: Math.round(Math.atan2(vy, vx) * 100) / 100, fire });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Power-ups
+
+function applyPowerUp(s, p, k) {
+  if (k === PU.ICE) {
+    for (const q of s.players) if (q.team !== p.team) q.sl = PU_INFO[PU.ICE].ticks;
+    return;
+  }
+  if (k === PU.RUBBER) {
+    s.ball.rub = PU_INFO[PU.RUBBER].ticks;
+    return;
+  }
+  p.eff = k;
+  p.et = PU_INFO[k].ticks;
+}
+
+/** Picking up runs everywhere (prediction too); spawning only on the authority. */
+function powerUps(s, auth, ev) {
+  const list = s.pu;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const u = list[i];
+    u.t++;
+    if (u.t > PU_TUNE.LIFE) {
+      list.splice(i, 1);
+      continue;
+    }
+    for (const p of s.players) {
+      const reach = radius(p) + PU_TUNE.PICK_R;
+      const dx = p.x - u.x;
+      const dy = p.y - u.y;
+      if (dx * dx + dy * dy > reach * reach) continue;
+      applyPowerUp(s, p, u.k);
+      list.splice(i, 1);
+      ev.push({ e: 'pu', p: p.id, k: u.k, x: Math.round(u.x), y: Math.round(u.y) });
+      break;
+    }
+  }
+  if (!auth || !s.rules.pu || s.phase !== PHASE.PLAY) return;
+  if (--s.puT > 0) return;
+  s.puT = PU_TUNE.EVERY_MIN + Math.floor(Math.random() * (PU_TUNE.EVERY_MAX - PU_TUNE.EVERY_MIN));
+  if (list.length >= (s.players.length > 4 ? 2 : 1)) return;
+  const f = s.field;
+  for (let tries = 0; tries < 12; tries++) {
+    const x = (Math.random() * 2 - 1) * (f.hw - 140);
+    const y = (Math.random() * 2 - 1) * (f.hh - 60);
+    let ok = Math.hypot(x - s.ball.x, y - s.ball.y) > 80;
+    for (const p of s.players) if (Math.hypot(x - p.x, y - p.y) < 90) ok = false;
+    if (!ok) continue;
+    const k = 1 + Math.floor(Math.random() * 5);
+    const id = s.puId++;
+    list.push({ id, k, x: Math.round(x), y: Math.round(y), t: 0 });
+    ev.push({ e: 'pus', k, x: Math.round(x), y: Math.round(y) });
+    break;
   }
 }
 
@@ -277,7 +364,7 @@ function kicks(s, ev) {
  */
 function closeControl(s, p, d) {
   const b = s.ball;
-  if (d > CONTACT + 6 || p.kcd > 0 || s.phase === PHASE.COUNTDOWN) return;
+  if (d > radius(p) + B.R + 6 || p.kcd > 0 || s.phase === PHASE.COUNTDOWN) return;
   const rvx = b.vx - p.vx;
   const rvy = b.vy - p.vy;
   if (rvx * rvx + rvy * rvy > K.CONTROL_REL * K.CONTROL_REL) return;
@@ -294,7 +381,7 @@ function ownership(s, ev) {
   let best = null;
   let bestD = OWN_RANGE;
   for (const p of s.players) {
-    const d = Math.hypot(b.x - p.x, b.y - p.y);
+    const d = Math.hypot(b.x - p.x, b.y - p.y) - (radius(p) - P.R);
     if (d < bestD) {
       bestD = d;
       best = p;
@@ -304,7 +391,7 @@ function ownership(s, ev) {
     b.owner = -1;
     return;
   }
-  closeControl(s, best, bestD);
+  closeControl(s, best, bestD + radius(best) - P.R);
   if (b.owner !== best.id) {
     // Being near the ball is not a touch: only real contact (collision / kick) credits a player.
     b.owner = best.id;
@@ -343,7 +430,8 @@ function ballWalls(s, ev) {
   const b = s.ball;
   const f = s.field;
   const r = B.R;
-  const hit = cornerArc(f, b, r, B.WALL_E);
+  const wallE = b.rub > 0 ? PU_TUNE.RUBBER_WALL_E : B.WALL_E;
+  const hit = cornerArc(f, b, r, wallE);
   if (hit > 1.5) ev.push({ e: 'wall', v: Math.round(hit * 10) / 10 });
   const inGoalBox = Math.abs(b.x) > f.hw && Math.abs(b.y) < f.gh;
 
@@ -374,13 +462,13 @@ function ballWalls(s, ev) {
     b.y = -f.hh + r;
     if (b.vy < 0) {
       if (b.vy < -1.5) ev.push({ e: 'wall', v: Math.round(-b.vy * 10) / 10 });
-      b.vy = -b.vy * B.WALL_E;
+      b.vy = -b.vy * wallE;
     }
   } else if (b.y + r > f.hh) {
     b.y = f.hh - r;
     if (b.vy > 0) {
       if (b.vy > 1.5) ev.push({ e: 'wall', v: Math.round(b.vy * 10) / 10 });
-      b.vy = -b.vy * B.WALL_E;
+      b.vy = -b.vy * wallE;
     }
   }
   if (Math.abs(b.x) + r > f.hw && Math.abs(b.y) >= f.gh) {
@@ -389,7 +477,7 @@ function ballWalls(s, ev) {
     if (b.vx * side > 0) {
       const sp = Math.abs(b.vx);
       if (sp > 1.5) ev.push({ e: 'wall', v: Math.round(sp * 10) / 10 });
-      b.vx = -b.vx * B.WALL_E;
+      b.vx = -b.vx * wallE;
     }
   }
 }
@@ -423,8 +511,11 @@ function ballPosts(s, ev) {
 
 function updateBall(s, ev) {
   const b = s.ball;
-  b.vx *= B.FRICTION;
-  b.vy *= B.FRICTION;
+  const fr = b.fire > 0 ? PU_TUNE.FIRE_FRICTION : b.rub > 0 ? PU_TUNE.RUBBER_FRICTION : B.FRICTION;
+  if (b.fire > 0) b.fire--;
+  if (b.rub > 0) b.rub--;
+  b.vx *= fr;
+  b.vy *= fr;
   b.x += b.vx;
   b.y += b.vy;
   if (b.vx * b.vx + b.vy * b.vy < 0.0004) b.vx = b.vy = 0;
@@ -435,11 +526,11 @@ function updateBall(s, ev) {
 function collidePlayers(s) {
   const ps = s.players;
   const n = ps.length;
-  const R2 = P.R * 2;
   for (let i = 0; i < n; i++) {
     const a = ps[i];
     for (let j = i + 1; j < n; j++) {
       const c = ps[j];
+      const R2 = radius(a) + radius(c);
       let dx = c.x - a.x;
       let dy = c.y - a.y;
       let d2 = dx * dx + dy * dy;
@@ -476,8 +567,8 @@ function collideBallPlayers(s, ev) {
 
 function collideBallPlayersOnce(s, bounce, ev) {
   const b = s.ball;
-  const min = CONTACT;
   for (const p of s.players) {
+    const min = radius(p) + B.R;
     const dx = b.x - p.x;
     const dy = b.y - p.y;
     const d2 = dx * dx + dy * dy;
@@ -495,7 +586,13 @@ function collideBallPlayersOnce(s, bounce, ev) {
     }
     const vn = (b.vx - p.vx) * nx + (b.vy - p.vy) * ny;
     if (vn < 0) {
-      const e = bounce ? B.PLAYER_E : 0;
+      const e = bounce ? (b.rub > 0 ? PU_TUNE.RUBBER_PLAYER_E : B.PLAYER_E) : 0;
+      if (bounce && b.fire > 0 && vn < -5) {
+        // A fireball blasts the player it hits.
+        p.vx -= nx * PU_TUNE.FIRE_KNOCK;
+        p.vy -= ny * PU_TUNE.FIRE_KNOCK;
+        ev.push({ e: 'blast', p: p.id });
+      }
       b.vx -= (1 + e) * vn * nx;
       b.vy -= (1 + e) * vn * ny;
       p.vx += vn * nx * 0.08;
@@ -508,13 +605,14 @@ function collideBallPlayersOnce(s, bounce, ev) {
 
 function playerBounds(s) {
   const f = s.field;
-  const minX = -f.hw + P.R - EDGE;
-  const maxX = f.hw - P.R + EDGE;
-  const minY = -f.hh + P.R - EDGE;
-  const maxY = f.hh - P.R + EDGE;
-  const postMin = P.R + POST_R;
   for (const p of s.players) {
-    cornerArc(f, p, P.R - EDGE, 0);
+    const pr = radius(p);
+    const minX = -f.hw + pr - EDGE;
+    const maxX = f.hw - pr + EDGE;
+    const minY = -f.hh + pr - EDGE;
+    const maxY = f.hh - pr + EDGE;
+    const postMin = pr + POST_R;
+    cornerArc(f, p, pr - EDGE, 0);
     if (p.x < minX) {
       p.x = minX;
       if (p.vx < 0) p.vx = 0;
@@ -686,6 +784,7 @@ export function step(s, auth) {
   ballWalls(s, ev);
   playerBounds(s);
   ownership(s, ev);
+  if (s.pu.length || s.rules.pu) powerUps(s, auth, ev);
   if (s.phase === PHASE.KICKOFF) kickoffRules(s);
   phaseLogic(s, auth, ev);
   return ev;

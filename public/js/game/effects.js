@@ -61,6 +61,30 @@ export class Effects {
     }
   }
 
+  flame(x, y, z = 4, strong = false) {
+    if (this.quality === 'low' && Math.random() < 0.6) return;
+    const a = Math.random() * Math.PI * 2;
+    this.add({
+      k: 'flame', x: x + Math.cos(a) * 4, y: y + Math.sin(a) * 4, z,
+      vx: (Math.random() - 0.5) * 0.6, vy: (Math.random() - 0.5) * 0.6, vz: 0.8 + Math.random() * 1.2,
+      life: 0, max: strong ? 0.55 : 0.4, size: strong ? 6 + Math.random() * 4 : 3.5 + Math.random() * 2.5,
+      c: Math.random() < 0.5 ? '255,96,24' : '255,150,30',
+    });
+  }
+
+  burst(x, y, color) {
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      const sp = 1.5 + Math.random() * 2;
+      this.add({
+        k: 'spark', x, y, z: 16,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: 1 + Math.random() * 2,
+        life: 0, max: 0.5 + Math.random() * 0.3, size: 2.2, c: color,
+      });
+    }
+    this.ring(x, y, color.startsWith('#') ? 'rgba(255,255,255,0.8)' : color, 10, 50, 0.5);
+  }
+
   sparks(x, y, z) {
     for (let i = 0; i < 16; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -145,6 +169,10 @@ export class Effects {
         p.vx *= 0.94;
         p.vy *= 0.94;
         p.size += dt * 10;
+      } else if (p.k === 'flame') {
+        p.vx *= 0.95;
+        p.vy *= 0.95;
+        p.size *= 0.97;
       } else if (p.k === 'star') {
         p.vx *= 0.92;
         p.vy *= 0.92;

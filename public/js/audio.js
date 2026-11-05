@@ -337,6 +337,100 @@ export class Audio {
     }
   }
 
+  /** Power-up picked up: bright rising arpeggio. */
+  powerUp(k) {
+    if (!this.ensure()) return;
+    const c = this.ctx;
+    const t = c.currentTime;
+    const base = [0, 523, 392, 659, 330, 587][k] || 523;
+    [0, 4, 7, 12].forEach((st, i) => {
+      const o = c.createOscillator();
+      o.type = i % 2 ? 'triangle' : 'square';
+      o.frequency.value = base * 2 ** (st / 12);
+      const f = c.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 3000;
+      const g = c.createGain();
+      this.env(g, t + i * 0.06, 0.005, 0.09, 0.16);
+      o.connect(f).connect(g).connect(this.master);
+      o.start(t + i * 0.06);
+      o.stop(t + i * 0.06 + 0.25);
+    });
+    if (k === 4) this.shimmer();
+  }
+
+  /** A power-up appeared on the pitch. */
+  chime() {
+    if (!this.ensure() || !this.throttle('chime', 400)) return;
+    const c = this.ctx;
+    const t = c.currentTime;
+    for (const [fr, d] of [[1318, 0], [1760, 0.08]]) {
+      const o = c.createOscillator();
+      o.frequency.value = fr;
+      const g = c.createGain();
+      this.env(g, t + d, 0.005, 0.05, 0.35);
+      o.connect(g).connect(this.master);
+      o.start(t + d);
+      o.stop(t + d + 0.45);
+    }
+  }
+
+  shimmer() {
+    const c = this.ctx;
+    const t = c.currentTime;
+    const n = this.noiseSrc();
+    const f = c.createBiquadFilter();
+    f.type = 'highpass';
+    f.frequency.value = 5000;
+    const g = c.createGain();
+    this.env(g, t, 0.05, 0.12, 0.6);
+    n.connect(f).connect(g).connect(this.master);
+    n.start(t);
+    n.stop(t + 0.8);
+  }
+
+  /** Fireball kick / fireball hitting a player. */
+  boom() {
+    if (!this.ensure() || !this.throttle('boom', 120)) return;
+    const c = this.ctx;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(35, t + 0.35);
+    const g = c.createGain();
+    this.env(g, t, 0.005, 0.7, 0.4);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.5);
+    const n = this.noiseSrc();
+    const f = c.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(3000, t);
+    f.frequency.exponentialRampToValueAtTime(300, t + 0.4);
+    const ng = c.createGain();
+    this.env(ng, t, 0.005, 0.45, 0.4);
+    n.connect(f).connect(ng).connect(this.master);
+    n.start(t);
+    n.stop(t + 0.5);
+  }
+
+  /** Rubber ball bouncing off a board. */
+  boing(v) {
+    if (!this.ensure() || !this.throttle('boing', 70)) return;
+    const c = this.ctx;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(180, t);
+    o.frequency.exponentialRampToValueAtTime(520, t + 0.12);
+    o.frequency.exponentialRampToValueAtTime(260, t + 0.22);
+    const g = c.createGain();
+    this.env(g, t, 0.005, Math.min(0.35, 0.1 + v * 0.02), 0.22);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.3);
+  }
+
   beep(high = false) {
     if (!this.ensure()) return;
     const c = this.ctx;

@@ -1,7 +1,7 @@
 // In-game heads-up display (DOM overlay).
 
 import { $, el, esc, fmtTime } from './dom.js';
-import { PHASE, EMOTES, TIMING } from '../../shared/constants.js';
+import { PHASE, EMOTES, TIMING, PU, PU_INFO } from '../../shared/constants.js';
 
 const upper = (s) => String(s).toLocaleUpperCase('tr');
 
@@ -23,6 +23,7 @@ export class Hud {
     this.spectateBar = $('#spectate-bar');
     this.minimap = $('#minimap');
     this.ping = $('#hud-ping');
+    this.puChips = $('#pu-chips');
     this.scores = $('#scores-overlay');
     this.hintEl = $('#hint');
     this.last = {};
@@ -106,6 +107,20 @@ export class Hud {
     });
     if (follow && ++this.minimapTick % 3 === 0) this.app.renderer.drawMinimap(this.minimap, view);
 
+    // Active power-ups: mine, being frozen, and a rubber ball.
+    const me = session.myPlayer();
+    const chips = [];
+    if (me && me.eff) chips.push([me.eff, me.eff === PU.FIRE ? 'sonraki vuruş' : '', me.et / PU_INFO[me.eff].ticks]);
+    if (me && me.sl > 0) chips.push([PU.ICE, 'dondun', me.sl / PU_INFO[PU.ICE].ticks]);
+    if (s.ball.rub > 0) chips.push([PU.RUBBER, '', s.ball.rub / PU_INFO[PU.RUBBER].ticks]);
+    const key = chips.map((c) => `${c[0]}:${Math.ceil(c[2] * 20)}`).join('|');
+    this.set('chips', key, () => {
+      this.puChips.innerHTML = chips.map(([k, note, left]) => {
+        const info = PU_INFO[k];
+        return `<div class="pu-chip" style="--pc:${info.color}"><b>${esc(info.name)}</b>${note ? `<small>${esc(note)}</small>` : ''}<i style="width:${Math.round(left * 100)}%"></i></div>`;
+      }).join('');
+    });
+
     if (session.mode === 'online') {
       const rtt = Math.round(this.app.net.rtt);
       this.set('ping', rtt, (v) => {
@@ -122,8 +137,12 @@ export class Hud {
     setTimeout(() => n.remove(), ms);
   }
 
-  popText(t) {
+  popText(t, color) {
     const n = el('span', { text: t });
+    if (color) {
+      n.style.color = color;
+      n.style.textShadow = `0 0 20px ${color}, 0 4px 10px #000`;
+    }
     this.popEl.innerHTML = '';
     this.popEl.append(n);
     setTimeout(() => n.remove(), 1300);

@@ -95,7 +95,7 @@ export class Modals {
 
   practice() {
     const app = this.app;
-    const opts = { teamSize: 3, level: 1, duration: 180, ...(app.prefs.practice || {}) };
+    const opts = { teamSize: 3, level: 1, duration: 180, powerups: true, ...(app.prefs.practice || {}) };
     const m = openModal({
       id: 'practice',
       title: 'Antrenman',
@@ -103,7 +103,8 @@ export class Modals {
         el('p', { class: 'muted', style: { margin: 0 }, text: 'Sunucuya gerek yok: botlara karşı tek başına oyna, kontrolleri öğren.' }),
         el('div', { class: 'set-row' }, el('label', { text: 'Takım boyutu' }), seg([1, 2, 3, 4].map((v) => ({ v, label: `${v}v${v}` })), opts.teamSize, (v) => { opts.teamSize = v; }, { cls: 'lime' })),
         el('div', { class: 'set-row' }, el('label', { text: 'Rakip seviyesi' }), seg([0, 1, 2].map((v) => ({ v, label: BOT_LEVEL_NAMES[v] })), opts.level, (v) => { opts.level = v; })),
-        el('div', { class: 'set-row' }, el('label', { text: 'Süre' }), seg([60, 180, 300].map((v) => ({ v, label: `${v / 60} dk` })), opts.duration, (v) => { opts.duration = v; }))),
+        el('div', { class: 'set-row' }, el('label', { text: 'Süre' }), seg([60, 180, 300].map((v) => ({ v, label: `${v / 60} dk` })), opts.duration, (v) => { opts.duration = v; })),
+        el('div', { class: 'toggle-row' }, el('span', { text: 'Rastgele güçlendirmeler' }), toggle(opts.powerups !== false, (v) => { opts.powerups = v; }))),
       foot: [
         el('button', { class: 'btn ghost', type: 'button', onclick: () => m.close() }, 'Vazgeç'),
         el('button', {
@@ -185,6 +186,7 @@ export class Modals {
             <li>Top yakınındayken önünde çıkan <b>oklar</b> vuruşta topun gideceği yönü gösterir.</li>
             <li>Tuşa basılıyken etrafında beyaz bir halka çıkar; top değdiği anda vuruş olur.</li>
             <li>Topla dönerken yavaş dön: top ayağına yapışmaz ama hafifçe seni takip eder.</li>
+            <li><b>Güçlendirmeler:</b> maç sırasında sahada parlayan rozetler belirir; üstünden geçerek kap. <b>Ateş Topu</b> sonraki vuruşunu alevli ve çok sert yapar, <b>Dev</b> seni büyütür, <b>Hız</b> hızlandırır, <b>Buz</b> rakipleri yavaşlatır, <b>Lastik Top</b> topu hiç yavaşlamadan sektirir.</li>
             <li><b>Kenarlar banttır:</b> top duvarlardan seker, banttan gol atabilirsin. Köşeler yuvarlak olduğu için top köşede sıkışmaz.</li>
           </ul>
         </div>`,
