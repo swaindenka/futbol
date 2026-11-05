@@ -194,6 +194,7 @@ export class Room {
     if ('bots' in patch) s.bots = !!patch.bots;
     if ('goldenGoal' in patch) s.goldenGoal = !!patch.goldenGoal;
     if ('replays' in patch) s.replays = !!patch.replays;
+    if ('powerups' in patch) s.powerups = !!patch.powerups;
     if (Array.isArray(patch.kits) && patch.kits.length === 2) {
       const k = patch.kits.map((v) => Math.max(0, Math.min(KITS.length - 1, v | 0)));
       if (k[0] !== k[1]) s.kits = k;

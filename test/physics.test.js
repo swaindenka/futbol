@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  makeState, addPlayer, resetKickoff, step, findPlayer,
+  makeState, addPlayer, resetKickoff, step, findPlayer, radius,
 } from '../public/shared/physics.js';
 import { encodeSnapshot, decodeSnapshot } from '../public/shared/protocol.js';
 import { BotBrain } from '../public/shared/bot.js';
 import { MatchStats } from '../public/shared/stats.js';
-import { PHASE, BTN, B, P, TIMING } from '../public/shared/constants.js';
+import { PHASE, BTN, B, P, TIMING, PU, PU_TUNE } from '../public/shared/constants.js';
 
 const rules = { duration: 120, goldenGoal: true, scoreLimit: 0, replays: false };
 
@@ -373,4 +373,104 @@ test('2v2: a straight shot right after the kickoff is not a free goal', () => {
     }
   }
   assert.ok(goals <= 1, `kickoff shots scored ${goals}/${trials} (was 12/15 before the fix)`);
+});
+
+// ---------------------------------------------------------------------------
+// Power-ups
+
+function puSetup() {
+  const s = setup();
+  s.phase = PHASE.PLAY;
+  s.puT = 1e9; // no random spawns during these tests
+  return s;
+}
+
+test('power-ups spawn during play when enabled, never when disabled', () => {
+  for (const on of [true, false]) {
+    const s = makeState('small', { ...rules, powerups: on });
+    addPlayer(s, 1, 0);
+    addPlayer(s, 2, 1);
+    resetKickoff(s);
+    s.phase = PHASE.PLAY;
+    s.time = 1e6;
+    const ev = run(s, PU_TUNE.FIRST + PU_TUNE.EVERY_MAX + 10);
+    const spawned = ev.filter((e) => e.e === 'pus').length;
+    if (on) assert.ok(spawned >= 1, 'spawned');
+    else assert.equal(spawned, 0);
+  }
+});
+
+test('picking up Giant makes the body bigger, then it wears off', () => {
+  const s = puSetup();
+  const p = findPlayer(s, 1);
+  s.pu.push({ id: 1, k: PU.GIANT, x: p.x + 5, y: p.y, t: 0 });
+  const ev = run(s, 1);
+  assert.ok(ev.some((e) => e.e === 'pu' && e.p === 1 && e.k === PU.GIANT));
+  assert.equal(s.pu.length, 0);
+  assert.ok(radius(p) > P.R * 1.4);
+  run(s, 481);
+  assert.equal(radius(p), P.R);
+});
+
+test('Fire: the next kick is much harder, sets the ball on fire and is used up', () => {
+  const kickSpeed = (fire) => {
+    const s = puSetup();
+    const p = findPlayer(s, 1);
+    findPlayer(s, 2).y = 250;
+    p.x = 0;
+    p.y = 0;
+    if (fire) {
+      p.eff = PU.FIRE;
+      p.et = 480;
+    }
+    s.ball.x = P.R + B.R + 1;
+    s.ball.y = 0;
+    const ev = run(s, 2, { 1: { mx: 0, my: 0, a: 0, b: BTN.KICK } });
+    return { v: ev.find((e) => e.e === 'kick').v, s, p };
+  };
+  const normal = kickSpeed(false);
+  const fire = kickSpeed(true);
+  assert.ok(fire.v > normal.v * 1.4, `fire ${fire.v} vs normal ${normal.v}`);
+  assert.ok(fire.s.ball.fire > 0);
+  assert.equal(fire.p.eff, 0, 'fireball used up');
+});
+
+test('Ice slows the whole other team', () => {
+  const s = puSetup();
+  const p = findPlayer(s, 1);
+  const q = findPlayer(s, 2);
+  s.pu.push({ id: 1, k: PU.ICE, x: p.x, y: p.y, t: 0 });
+  run(s, 1);
+  assert.ok(q.sl > 0 && p.sl === 0);
+  q.x = -100;
+  q.y = 0;
+  q.vx = q.vy = 0;
+  run(s, 60, { 2: { mx: 1, my: 0, a: 0, b: 0 } });
+  assert.ok(Math.hypot(q.vx, q.vy) < P.SPEED * 0.6, 'slowed');
+});
+
+test('Rubber ball keeps its speed off the boards', () => {
+  const s = puSetup();
+  for (const p of s.players) p.x = -400;
+  s.ball.rub = 600;
+  s.ball.x = 0;
+  s.ball.y = 0;
+  s.ball.vx = 0;
+  s.ball.vy = 8;
+  run(s, 40);
+  assert.ok(Math.abs(s.ball.vy) > 6, `still fast after the bounce (${s.ball.vy.toFixed(1)})`);
+});
+
+test('snapshot carries power-ups and effects', () => {
+  const s = puSetup();
+  const p = findPlayer(s, 1);
+  p.eff = PU.SPEED;
+  p.et = 100;
+  s.ball.rub = 50;
+  s.pu.push({ id: 7, k: PU.FIRE, x: 10, y: 20, t: 3 });
+  const d = JSON.parse(JSON.stringify(encodeSnapshot(s, [])));
+  const r = decodeSnapshot(d, { field: 'small', rules: s.rules });
+  assert.equal(r.players.find((q) => q.id === 1).eff, PU.SPEED);
+  assert.equal(r.ball.rub, 50);
+  assert.deepEqual(r.pu[0], { id: 7, k: PU.FIRE, x: 10, y: 20, t: 3 });
 });

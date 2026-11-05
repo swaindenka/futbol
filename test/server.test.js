@@ -113,7 +113,7 @@ test('8 players fill a room, the 9th is rejected, a 4v4 match runs', async () =>
   let seq = 0;
   const sendInputs = setInterval(() => {
     seq++;
-    host.send({ t: 'i', s: seq, x: 0, y: 1, a: 0, b: 1 });
+    host.send({ t: 'i', m: start.mid, s: seq, x: 0, y: 1, a: 0, b: 0 });
   }, 16);
   await new Promise((r) => setTimeout(r, 3600)); // countdown is 3s
   clearInterval(sendInputs);
@@ -242,4 +242,36 @@ test('profile changes in the lobby reach everyone', async () => {
   assert.equal(r.room.players.find((p) => p.id === a.id).number, 23);
   a.send({ t: 'leave' });
   a.ws.close();
+});
+
+test('rematch: late inputs from the previous match do not freeze a player', async () => {
+  const a = await client('Rev1', 'tok-rematch-01');
+  a.send({ t: 'create', name: 'Rematch', isPublic: false });
+  const j = await a.wait((m) => m.t === 'joined');
+  a.send({ t: 'settings', settings: { teamSize: 1 } });
+  await a.wait((m) => m.t === 'room' && m.room.settings.teamSize === 1);
+  a.send({ t: 'start' });
+  const first = await a.wait((m) => m.t === 'start');
+  a.send({ t: 'stop' });
+  await a.wait((m) => m.t === 'end', 5000);
+  a.send({ t: 'start' });
+  const second = await a.wait((m) => m.t === 'start');
+  assert.notEqual(second.mid, first.mid);
+  // The old session keeps sending a few inputs with high sequence numbers after the rematch.
+  for (let s = 5000; s < 5010; s++) a.send({ t: 'i', m: first.mid, s, x: 0, y: 0, a: 0, b: 0 });
+  await new Promise((r) => setTimeout(r, 2300)); // countdown
+  for (let s = 1; s <= 40; s++) {
+    a.send({ t: 'i', m: second.mid, s, x: 0, y: 1, a: 0, b: 0 });
+    await new Promise((r) => setTimeout(r, 16));
+  }
+  a.msgs = a.msgs.filter((m) => m.t !== 's');
+  const snap = await a.wait((m) => m.t === 's');
+  const me = snap.d[10].find((p) => p[0] === a.id);
+  assert.ok(snap.a >= 20, `new-match inputs are acknowledged (ack ${snap.a})`);
+  assert.ok(me[4] > 30, `player moved (y=${me[4]})`);
+  a.send({ t: 'stop' });
+  await a.wait((m) => m.t === 'end', 5000);
+  a.send({ t: 'leave' });
+  a.ws.close();
+  void j;
 });

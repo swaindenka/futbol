@@ -54,6 +54,41 @@ export const K = {
   CONTROL_REL: 3.5, // only for balls moving slowly relative to the player
 };
 
+// Random power-ups that pop up on the pitch during play.
+export const PU = {
+  FIRE: 1, // next kick is a fireball
+  GIANT: 2, // bigger body
+  SPEED: 3, // faster
+  ICE: 4, // the other team is slowed
+  RUBBER: 5, // super bouncy ball
+};
+
+export const PU_INFO = {
+  1: { id: 'fire', name: 'Ateş Topu', desc: 'Sonraki vuruşun alev alır', color: '#ff7a1a', ticks: 480 },
+  2: { id: 'giant', name: 'Dev', desc: 'Kocaman oldun', color: '#a05cff', ticks: 480 },
+  3: { id: 'speed', name: 'Hız', desc: 'Rüzgar gibisin', color: '#ffd23f', ticks: 360 },
+  4: { id: 'ice', name: 'Buz', desc: 'Rakipler dondu', color: '#5fd4ff', ticks: 240 },
+  5: { id: 'rubber', name: 'Lastik Top', desc: 'Top deli gibi seker', color: '#ff4fa3', ticks: 600 },
+};
+
+export const PU_TUNE = {
+  PICK_R: 14, // pickup reach beyond the player's radius
+  LIFE: 600, // ticks a power-up stays on the pitch
+  FIRST: 420, // first spawn after kickoff
+  EVERY_MIN: 540,
+  EVERY_MAX: 900,
+  GIANT_SCALE: 1.55,
+  SPEED_MUL: 1.4,
+  SLOW_MUL: 0.55,
+  FIRE_MUL: 1.6,
+  FIRE_TICKS: 90,
+  FIRE_FRICTION: 0.996,
+  FIRE_KNOCK: 4.5,
+  RUBBER_WALL_E: 0.98,
+  RUBBER_PLAYER_E: 0.9,
+  RUBBER_FRICTION: 0.994,
+};
+
 export const BTN = {
   KICK: 2,
 };
@@ -98,6 +133,7 @@ export const DEFAULT_SETTINGS = {
   goldenGoal: true,
   scoreLimit: 0,
   replays: false,
+  powerups: true,
   kits: [0, 4],
 };
 

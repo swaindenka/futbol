@@ -15,6 +15,12 @@ oyuncular forma desenli pullar olarak görünür.
 - Saha kenarları banttır, top duvarlardan seker; köşeler bilardo masası gibi yuvarlatılmıştır, top köşede sıkışmaz
 - Karşılıklı aynı anda vuruşta top bloke olur, asla oyuncunun içinden geçmez
 - Her golden sonra kısa kutlama ve **3-2-1 geri sayım**; antrenmanda menü açıkken oyun duraklar
+- **Rastgele güçlendirmeler** (oda ayarından açılıp kapatılır): maç sırasında sahada rozetler belirir, üstünden geçen kapar
+  - 🔥 **Ateş Topu**: sonraki vuruş alevli ve çok sert, çarptığı oyuncuyu savurur
+  - 🍄 **Dev**: 8 saniye 1.5 kat büyük gövde
+  - ⚡ **Hız**: 6 saniye %40 daha hızlı
+  - ❄️ **Buz**: rakip takımın tamamı 4 saniye yavaşlar
+  - 🎾 **Lastik Top**: top 10 saniye bantlardan ve oyunculardan hız kaybetmeden seker
 - Santra kuralları, **altın gol**, gol limiti, süre seçimi
 - 3 zorlukta **botlar** (kaleci, top kovalayan, destek rolleri) boş yerleri doldurur
 - Maç sonu istatistikleri: gol, asist, şut, topa sahip olma, oyuncu puanı ve **MVP**
