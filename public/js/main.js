@@ -249,6 +249,7 @@ class App {
     this.setSession(new Session(this, {
       mode: 'online',
       myId: this.myId,
+      mid: msg.mid,
       fieldKey: msg.field,
       settings: msg.settings,
       rules: msg.rules,

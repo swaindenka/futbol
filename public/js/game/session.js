@@ -63,6 +63,7 @@ export class Session {
     this.goalCount = 0;
 
     if (this.mode === 'online') {
+      this.mid = opts.mid;
       this.base = { field: opts.fieldKey, rules: opts.rules };
       this.state = decodeSnapshot(opts.snap, this.base);
       this.setRoster(opts.roster || []);
@@ -171,9 +172,9 @@ export class Session {
     }
 
     if (this.mode === 'online') {
-      if (me) {
+      if (me && !this.ended) {
         this.seq++;
-        this.app.net.send({ t: 'i', s: this.seq, x: inp.mx, y: inp.my, a: inp.a, b: inp.b });
+        this.app.net.send({ t: 'i', m: this.mid, s: this.seq, x: inp.mx, y: inp.my, a: inp.a, b: inp.b });
         this.history.push({ s: this.seq, mx: inp.mx, my: inp.my, a: inp.a, b: inp.b });
         if (this.history.length > 240) this.history.shift();
         me.in = { mx: inp.mx, my: inp.my, a: inp.a, b: inp.b };

@@ -36,6 +36,9 @@ export class Match {
     this.meta = new Map();
     this.stats = new MatchStats();
     this.events = [];
+    // Inputs carry this id so packets still in flight from a previous match (e.g. right
+    // after "Rövanş") cannot poison the new match's input sequence.
+    this.mid = room.lobby.nextId();
     this.botNames = shuffle(BOT_NAMES);
     this.botNameIdx = 0;
     this.stopped = false;
@@ -158,6 +161,7 @@ export class Match {
   // ---- networking -----------------------------------------------------------
 
   input(id, msg) {
+    if (msg.m !== this.mid) return; // input from another (older) match
     const h = this.humans.get(id);
     if (!h) return;
     const inp = sanitizeInput(msg);
@@ -171,6 +175,7 @@ export class Match {
   startMessage() {
     return {
       t: 'start',
+      mid: this.mid,
       field: this.fieldKey,
       settings: this.settings,
       rules: this.state.rules,
