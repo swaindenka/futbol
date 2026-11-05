@@ -326,3 +326,51 @@ test('bots move smoothly (no constant direction reversals)', () => {
   const perSecond = (reversals / ticks) * 60;
   assert.ok(perSecond < 0.5, `reversals per bot-second: ${perSecond.toFixed(2)} (about 1.3-1.9 before the fix)`);
 });
+
+test('2v2: a straight shot right after the kickoff is not a free goal', () => {
+  // Regression: defending bots used to drift to the sides during the kickoff and leave the
+  // centre lane and the (keeper-less) goal open.
+  let goals = 0;
+  let trials = 0;
+  for (const level of [0, 1, 2]) {
+    for (const wait of [10, 120, 400]) {
+      for (const aimY of [0, -30, 30]) {
+        const s = makeState('small', { ...rules, goldenGoal: false });
+        const brains = new Map();
+        let id = 1;
+        for (let t = 0; t < 2; t++) {
+          for (let i = 0; i < 2; i++) {
+            addPlayer(s, id, t);
+            if (id !== 1) brains.set(id, new BotBrain(id, level));
+            id++;
+          }
+        }
+        s.ko = 0;
+        resetKickoff(s);
+        s.phase = PHASE.KICKOFF;
+        s.pt = 0;
+        const me = findPlayer(s, 1);
+        for (let t = 0; t < wait + 300; t++) {
+          for (const p of s.players) if (p.id !== 1) p.in = brains.get(p.id).update(s);
+          if (t < wait) me.in = { mx: 0, my: 0, a: 0, b: 0 };
+          else {
+            const dx = s.field.hw - s.ball.x;
+            const dy = aimY - s.ball.y;
+            const d = Math.hypot(dx, dy);
+            const mx = s.ball.x - (dx / d) * 20 - me.x + (dx / d) * 30;
+            const my = s.ball.y - (dy / d) * 20 - me.y + (dy / d) * 30;
+            const m = Math.hypot(mx, my) || 1;
+            me.in = { mx: mx / m, my: my / m, a: 0, b: t % 20 < 10 ? BTN.KICK : 0 };
+          }
+          const ev = step(s, true);
+          if (ev.some((e) => e.e === 'goal')) {
+            if (ev.find((e) => e.e === 'goal').t === 0) goals++;
+            break;
+          }
+        }
+        trials++;
+      }
+    }
+  }
+  assert.ok(goals <= 1, `kickoff shots scored ${goals}/${trials} (was 12/15 before the fix)`);
+});

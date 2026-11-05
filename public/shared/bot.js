@@ -4,7 +4,7 @@
 // with the target (goal, open teammate or a clearance direction).
 
 import { P, B, BTN, PHASE } from './constants.js';
-import { teamPlayers, findPlayer, PHYS } from './physics.js';
+import { teamPlayers, findPlayer, formationSpot, PHYS } from './physics.js';
 import { clamp, distToSegment, angleDiff, lerp } from './util.js';
 
 const LEVELS = [
@@ -114,12 +114,26 @@ export class BotBrain {
     if (chaser) memo[me.team] = chaser.id;
     const outfield = mates.filter((m) => m !== keeperP);
     const rank = Math.max(0, outfield.indexOf(me));
+    // Without a keeper, the deepest non-chasing outfielder is the last man and guards the goal.
+    let sweeper = null;
+    if (!keeperP) {
+      let deepest = Infinity;
+      for (const m of outfield) {
+        if (m === chaser) continue;
+        const dg = Math.abs(m.x - -dir * f.hw);
+        if (dg < deepest) {
+          deepest = dg;
+          sweeper = m;
+        }
+      }
+    }
     const isKeeper = keeperP === me;
     const homeX = (isKeeper ? -0.82 : -0.35) * f.hw * dir;
     return {
       f, b, dir, mates, opps, outfield, rank,
       isKeeper,
       isChaser: chaser === me || (!chaser && !isKeeper),
+      isSweeper: sweeper === me,
       home: { x: homeX, y: (rank - (outfield.length - 1) / 2) * f.hh * 0.5 },
       goalX: dir * f.hw,
       ownX: -dir * f.hw,
@@ -328,6 +342,31 @@ export class BotBrain {
     this.moveTo(o, me, sx, sy, false);
   }
 
+  /** Last man (no keeper): stand on the line between the ball and our goal, block shots. */
+  sweep(s, me, ctx, o) {
+    const { f, b, dir, ownX } = ctx;
+    const bx = b.x + b.vx * 8;
+    const by = b.y + b.vy * 8;
+    const dist = Math.hypot(bx - ownX, by) || 1;
+    const depth = clamp(dist * 0.4, 70, 240);
+    const tx = ownX + ((bx - ownX) / dist) * depth;
+    let ty = (by / dist) * depth;
+    // A shot is coming: get onto its path right now (no smoothing).
+    if (b.vx * dir < -2) {
+      const t = (tx - b.x) / b.vx;
+      if (t > 0 && t < 90) {
+        ty = clamp(b.y + b.vy * t, -f.gh - 30, f.gh + 30);
+        this.sx = null;
+        this.moveTo(o, me, tx, ty, true);
+        return;
+      }
+    }
+    const [sx, sy] = this.smooth(tx, ty, 0.25);
+    this.steady = true;
+    this.moveTo(o, me, sx, sy, false);
+    void dir;
+  }
+
   support(s, me, ctx, o) {
     this.steady = true;
     const { f, b, dir, opps, outfield, rank, mates, ownX } = ctx;
@@ -337,9 +376,19 @@ export class BotBrain {
     const attacking = b.lt === me.team;
     let tx;
     let ty;
-    if (s.phase === PHASE.KICKOFF) {
-      tx = ctx.home.x;
-      ty = ctx.home.y;
+    if (s.phase === PHASE.KICKOFF && ctx.kickoffWait && mates.length === 1) {
+      // Alone against their kickoff: guard the goal like a last man instead of the circle.
+      this.sweep(s, me, ctx, o);
+      return;
+    } else if (s.phase === PHASE.KICKOFF) {
+      // Hold the kickoff shape: the first player covers the centre lane, the rest stay
+      // goal-side. Wandering off to the sides used to leave a free straight shot at goal.
+      const spot = formationSpot(s, me, true);
+      tx = spot.x;
+      ty = spot.y;
+    } else if (ctx.isSweeper && (!attacking || (b.x - ownX) * dir < f.w * 0.45)) {
+      this.sweep(s, me, ctx, o);
+      return;
     } else if (attacking) {
       tx = clamp(b.x + dir * (150 + rank * 30), -f.hw + 90, f.hw - 90);
       ty = laneY * 0.9 + b.y * 0.2;
