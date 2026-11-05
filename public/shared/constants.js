@@ -1,7 +1,7 @@
 // Shared game constants. Imported by both the Node server and the browser client.
 // Units: 1 world unit = 1 px at zoom 1. Velocities are units per tick (60 ticks/s).
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const TICK_RATE = 60;
 export const TICK_MS = 1000 / TICK_RATE;
 export const SNAPSHOT_EVERY = 2; // server sends a snapshot every 2 ticks (30 Hz)
@@ -54,40 +54,111 @@ export const K = {
   CONTROL_REL: 3.5, // only for balls moving slowly relative to the player
 };
 
+// Aftertouch ("falso"): right after a kick, the kicker's sideways stick input bends the ball.
+export const AT = {
+  TICKS: 24, // window after the kick
+  TURN: 0.0115, // max rotation of the ball's velocity per tick (radians)
+  DEAD: 0.2, // sideways input below this does nothing (keeps straight shots straight)
+  MIN_SPEED: 3, // slow balls do not curve
+};
+
 // Random power-ups that pop up on the pitch during play.
 export const PU = {
   FIRE: 1, // next kick is a fireball
-  GIANT: 2, // bigger body
+  GIANT: 2, // bigger, heavier body
   SPEED: 3, // faster
   ICE: 4, // the other team is slowed
   RUBBER: 5, // super bouncy ball
+  MAGNET: 6, // the ball sticks to your feet
+  SHIELD: 7, // a barrier guards your goal against one shot
+  GHOST: 8, // pass through players, immune to knock-backs
+  SHOCK: 9, // instant: blasts nearby opponents away and dazes them
+  MYSTERY: 10, // surprise box: usually a power-up, sometimes a curse
+  // Curses: only from the surprise box, never spawned on their own.
+  DIZZY: 11, // controls reversed
+  SLIPPY: 12, // feet slide like on ice
 };
 
+// kind: 'self' (personal buff), 'team', 'foe' (hits the other team), 'ball', 'instant', 'box', 'curse'.
+// w: spawn weight (0 = never spawned directly), mw: weight inside the surprise box.
 export const PU_INFO = {
-  1: { id: 'fire', name: 'Ateş Topu', desc: 'Sonraki vuruşun alev alır', color: '#ff7a1a', ticks: 480 },
-  2: { id: 'giant', name: 'Dev', desc: 'Kocaman oldun', color: '#a05cff', ticks: 480 },
-  3: { id: 'speed', name: 'Hız', desc: 'Rüzgar gibisin', color: '#ffd23f', ticks: 360 },
-  4: { id: 'ice', name: 'Buz', desc: 'Rakipler dondu', color: '#5fd4ff', ticks: 240 },
-  5: { id: 'rubber', name: 'Lastik Top', desc: 'Top deli gibi seker', color: '#ff4fa3', ticks: 600 },
+  1: { id: 'fire', name: 'Ateş Topu', desc: 'Sonraki vuruşun alev alır, çarptığını savurur', color: '#ff7a1a', ticks: 480, kind: 'self', w: 12, mw: 3 },
+  2: { id: 'giant', name: 'Dev', desc: 'Kocaman ve ağır oldun, rakipleri itersin', color: '#a05cff', ticks: 480, kind: 'self', w: 9, mw: 2 },
+  3: { id: 'speed', name: 'Hız', desc: 'Rüzgar gibisin', color: '#ffd23f', ticks: 360, kind: 'self', w: 12, mw: 3 },
+  4: { id: 'ice', name: 'Buz', desc: 'Rakipler yavaşladı', color: '#5fd4ff', ticks: 240, kind: 'foe', w: 9, mw: 2 },
+  5: { id: 'rubber', name: 'Lastik Top', desc: 'Top deli gibi seker', color: '#ff4fa3', ticks: 600, kind: 'ball', w: 7, mw: 1 },
+  6: { id: 'magnet', name: 'Mıknatıs', desc: 'Top ayağına yapışır', color: '#ff3b4e', ticks: 420, kind: 'self', w: 10, mw: 2 },
+  7: { id: 'shield', name: 'Kalkan', desc: 'Kalen bir şuta karşı korunur', color: '#2ee59d', ticks: 720, kind: 'team', w: 7, mw: 2 },
+  8: { id: 'ghost', name: 'Hayalet', desc: 'Oyuncuların içinden geçersin', color: '#8b9bb4', ticks: 360, kind: 'self', w: 8, mw: 2 },
+  9: { id: 'shock', name: 'Şok Dalgası', desc: 'Yakındaki rakipler savruldu', color: '#3d6bff', ticks: 0, kind: 'instant', w: 10, mw: 2 },
+  10: { id: 'mystery', name: 'Sürpriz Kutu', desc: 'Şansını dene', color: '#f5c542', ticks: 0, kind: 'box', w: 10, mw: 0 },
+  11: { id: 'dizzy', name: 'Ters Köşe', desc: 'Kontrollerin ters döndü', color: '#d17bff', ticks: 210, kind: 'curse', w: 0, mw: 3 },
+  12: { id: 'slippy', name: 'Kaygan', desc: 'Ayakların kayıyor', color: '#5fe3cf', ticks: 270, kind: 'curse', w: 0, mw: 3 },
 };
+
+export const PU_KINDS = Object.keys(PU_INFO).map(Number);
+
+/** Weighted random pick of a power-up kind; `key` is 'w' (pitch) or 'mw' (surprise box). */
+export function pickPowerUp(rand, key = 'w') {
+  let total = 0;
+  for (const k of PU_KINDS) total += PU_INFO[k][key] || 0;
+  let r = rand() * total;
+  for (const k of PU_KINDS) {
+    r -= PU_INFO[k][key] || 0;
+    if (r < 0) return k;
+  }
+  return PU.FIRE;
+}
 
 export const PU_TUNE = {
   PICK_R: 14, // pickup reach beyond the player's radius
   LIFE: 600, // ticks a power-up stays on the pitch
-  FIRST: 420, // first spawn after kickoff
+  FIRST: 420, // first spawn after kickoff (normal rate)
   EVERY_MIN: 540,
   EVERY_MAX: 900,
   GIANT_SCALE: 1.55,
+  GIANT_MASS: 2.4, // body mass vs a normal player (bumps and shoves)
   SPEED_MUL: 1.4,
+  SPEED_ACCEL: 1.35,
   SLOW_MUL: 0.55,
   FIRE_MUL: 1.6,
   FIRE_TICKS: 90,
   FIRE_FRICTION: 0.996,
   FIRE_KNOCK: 4.5,
+  FIRE_STUN: 30, // a fireball hit dazes the player it hits
   RUBBER_WALL_E: 0.98,
   RUBBER_PLAYER_E: 0.9,
   RUBBER_FRICTION: 0.994,
+  MAG_RANGE: 44, // magnet reach beyond contact distance
+  MAG_REL: 7.5, // only balls slower than this (relative) are caught
+  MAG_DAMP: 0.22, // relative velocity damping per tick
+  MAG_PULL: 0.42, // pull toward the feet
+  MAG_ORBIT: 0.5, // how far around the body (radians) the pull aims toward the front
+  SHIELD_E: 0.9,
+  SHOCK_R: 210,
+  SHOCK_KNOCK: 7.5,
+  SHOCK_STUN: 42,
+  STUN_DRAG: 0.9, // velocity kept per tick while dazed
+  SLIP_ACCEL: 0.035,
+  SLIP_DECEL: 0.985,
 };
+
+// Spawn rates per room setting: 0 off, 1 few, 2 normal, 3 chaos.
+export const PU_RATES = [
+  null,
+  { first: 600, min: 900, max: 1400, cap: 1, capBig: 1 },
+  { first: PU_TUNE.FIRST, min: PU_TUNE.EVERY_MIN, max: PU_TUNE.EVERY_MAX, cap: 1, capBig: 2 },
+  { first: 200, min: 200, max: 380, cap: 2, capBig: 3 },
+];
+export const PU_LEVEL_NAMES = ['Kapalı', 'Az', 'Normal', 'Kaos'];
+
+/** Power-up level from a setting (old rooms / prefs stored a boolean). */
+export function puLevel(v) {
+  if (v === true || v === undefined || v === null) return 2;
+  if (v === false) return 0;
+  const n = Math.floor(+v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(3, n)) : 2;
+}
 
 export const BTN = {
   KICK: 2,
@@ -133,7 +204,7 @@ export const DEFAULT_SETTINGS = {
   goldenGoal: true,
   scoreLimit: 0,
   replays: false,
-  powerups: true,
+  powerups: 2,
   kits: [0, 4],
 };
 
@@ -143,6 +214,7 @@ export const SETTING_OPTIONS = {
   botLevel: [0, 1, 2],
   field: ['auto', 'small', 'medium', 'large'],
   scoreLimit: [0, 3, 5, 7, 10],
+  powerups: [0, 1, 2, 3],
 };
 
 export const BOT_NAMES = [

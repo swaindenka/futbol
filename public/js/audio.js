@@ -342,7 +342,7 @@ export class Audio {
     if (!this.ensure()) return;
     const c = this.ctx;
     const t = c.currentTime;
-    const base = [0, 523, 392, 659, 330, 587][k] || 523;
+    const base = [0, 523, 392, 659, 330, 587, 440, 494, 370, 262, 698][k] || 523;
     [0, 4, 7, 12].forEach((st, i) => {
       const o = c.createOscillator();
       o.type = i % 2 ? 'triangle' : 'square';
@@ -356,7 +356,64 @@ export class Audio {
       o.start(t + i * 0.06);
       o.stop(t + i * 0.06 + 0.25);
     });
-    if (k === 4) this.shimmer();
+    if (k === 4 || k === 7) this.shimmer();
+    if (k === 8) this.whoosh(0.35);
+  }
+
+  /** Curse from the surprise box: a sad, wobbling "wah-wah". */
+  curse() {
+    if (!this.ensure()) return;
+    const c = this.ctx;
+    const t = c.currentTime;
+    [[392, 0], [370, 0.22], [330, 0.44]].forEach(([fr, d], i) => {
+      const o = c.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(fr, t + d);
+      o.frequency.linearRampToValueAtTime(fr * (i === 2 ? 0.8 : 0.96), t + d + (i === 2 ? 0.5 : 0.2));
+      const lfo = c.createOscillator();
+      lfo.frequency.value = 7;
+      const lg = c.createGain();
+      lg.gain.value = 6;
+      lfo.connect(lg).connect(o.frequency);
+      const f = c.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 1400;
+      const g = c.createGain();
+      this.env(g, t + d, 0.01, 0.1, i === 2 ? 0.55 : 0.22);
+      o.connect(f).connect(g).connect(this.master);
+      o.start(t + d);
+      lfo.start(t + d);
+      o.stop(t + d + 0.7);
+      lfo.stop(t + d + 0.7);
+    });
+  }
+
+  /** A shield blocks the ball: electric zap. */
+  zap() {
+    if (!this.ensure() || !this.throttle('zap', 120)) return;
+    const c = this.ctx;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    o.type = 'square';
+    o.frequency.setValueAtTime(1800, t);
+    o.frequency.exponentialRampToValueAtTime(220, t + 0.25);
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 1200;
+    const g = c.createGain();
+    this.env(g, t, 0.003, 0.22, 0.3);
+    o.connect(f).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.35);
+    const n = this.noiseSrc();
+    const hf = c.createBiquadFilter();
+    hf.type = 'highpass';
+    hf.frequency.value = 3500;
+    const ng = c.createGain();
+    this.env(ng, t, 0.002, 0.18, 0.2);
+    n.connect(hf).connect(ng).connect(this.master);
+    n.start(t);
+    n.stop(t + 0.3);
   }
 
   /** A power-up appeared on the pitch. */

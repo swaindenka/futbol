@@ -16,7 +16,7 @@ export class MatchStats {
     if (!st) {
       st = {
         id: meta.id, name: meta.name, number: meta.number, team: meta.team, bot: !!meta.bot,
-        goals: 0, assists: 0, shots: 0, passes: 0, passesOk: 0, tackles: 0, fouls: 0, ownGoals: 0,
+        goals: 0, assists: 0, shots: 0, passes: 0, passesOk: 0, tackles: 0, saves: 0, fouls: 0, ownGoals: 0,
       };
       this.players.set(meta.id, st);
     } else {
@@ -64,6 +64,12 @@ export class MatchStats {
         case 'tackle':
           if (st) st.tackles++;
           break;
+        case 'save':
+          if (st) st.saves++;
+          break;
+        case 'shield':
+          this.pendingPass = null; // a blocked ball is nobody's completed pass
+          break;
         case 'foul':
           if (st) st.fouls++;
           break;
@@ -90,7 +96,7 @@ export class MatchStats {
     const players = [...this.players.values()].map((p) => {
       const result = winner < 0 ? 0 : winner === p.team ? 0.5 : -0.3;
       const rating = clamp(
-        6 + p.goals * 1.2 + p.assists * 0.8 + p.shots * 0.15 + p.passesOk * 0.08 + p.tackles * 0.25
+        6 + p.goals * 1.2 + p.assists * 0.8 + p.shots * 0.15 + p.passesOk * 0.08 + p.tackles * 0.2 + p.saves * 0.45
           - p.fouls * 0.3 - p.ownGoals * 1 + result,
         3,
         10,

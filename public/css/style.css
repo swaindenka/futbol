@@ -421,6 +421,13 @@ input[type=number] { -moz-appearance: textfield; }
 .feed-item.out { animation: feed-out .4s ease forwards; }
 .feed-item.foul { --fc: var(--gold); }
 .feed-item.info { --fc: var(--cyan); }
+.feed-item.curse { border-left-style: dashed; color: #f0dcff; }
+
+/* Power-up list in the help dialog */
+.pu-help { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.pu-help-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .03); border: 1px solid var(--line); border-left: 3px solid var(--pc); font-size: 12.5px; }
+.pu-help-item b { color: var(--pc); font-family: var(--display); font-weight: 400; letter-spacing: .05em; text-transform: uppercase; font-size: 13px; }
+.pu-help-item span { color: var(--muted); line-height: 1.35; }
 @keyframes feed-in { from { opacity: 0; transform: translateX(-20px); } }
 @keyframes feed-out { to { opacity: 0; transform: translateX(-20px); } }
 
@@ -511,6 +518,9 @@ body.show-emotes .emote-bar, .emote-bar:hover { opacity: 1; }
 }
 .pu-chip small { font-family: var(--body); font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--muted); font-weight: 600; }
 .pu-chip i { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--pc); transition: width .25s linear; }
+.pu-chip.curse { border-style: dashed; animation: curse-wobble 1.2s ease-in-out infinite; }
+@keyframes curse-wobble { 0%, 100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
+@media (max-width: 640px) { .pu-chips { gap: 5px; } .pu-chip { padding: 4px 9px 6px; font-size: 11px; gap: 5px; } .pu-chip small { display: none; } }
 body.touch-ui .pu-chips { top: calc(52px + var(--safe-t)); }
 .hint { position: absolute; left: 50%; bottom: calc(64px + var(--safe-b)); transform: translateX(-50%); pointer-events: none; }
 .hint div { padding: 10px 16px; border-radius: 12px; background: rgba(8, 12, 22, .85); border: 1px solid var(--line-2); font-size: 13px; font-weight: 600; animation: feed-in .4s ease both; white-space: nowrap; }

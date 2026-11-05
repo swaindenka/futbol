@@ -7,6 +7,13 @@ import { P, B, PHASE, PU, PU_INFO, PU_TUNE } from '../../shared/constants.js';
 const TAU = Math.PI * 2;
 const LIME = '#b6ff3b';
 
+function hslHex(h, s, l) {
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))));
+  return `#${[f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -97,6 +104,7 @@ export class Renderer {
     this.drawRails(f, fx, 'far');
     this.drawGoal(f, -1, 'back', fx);
     this.drawGoal(f, 1, 'back', fx);
+    if (view.sh) for (let t = 0; t < 2; t++) if (view.sh[t] > 0) this.drawShield(f, t, view.kits[t], view.sh[t]);
 
     const ents = [];
     for (const p of view.players) ents.push({ y: p.y, k: 0, o: p });
@@ -187,9 +195,68 @@ export class Renderer {
       ctx.stroke();
     }
 
+    // Shields: glowing goal line
+    if (view.sh) {
+      for (let t = 0; t < 2; t++) {
+        if (!(view.sh[t] > 0)) continue;
+        const x = (t === 0 ? -1 : 1) * f.hw;
+        const pulse = 0.5 + 0.5 * Math.sin(this.time * 6);
+        const col = view.kits[t].primary;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = rgba(col, 0.25 + pulse * 0.2);
+        ctx.lineWidth = 14;
+        ctx.beginPath();
+        ctx.moveTo(x, -f.gh);
+        ctx.lineTo(x, f.gh);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+      }
+    }
+
     // Power-up auras
     for (const p of view.players) {
       const R = p.r || P.R;
+      if (p.db === PU.SLIPPY) {
+        // Slippery feet: a glossy puddle that shimmers under the player.
+        const g = ctx.createRadialGradient(p.x, p.y, R * 0.3, p.x, p.y, R + 16);
+        g.addColorStop(0, 'rgba(120,240,225,0.38)');
+        g.addColorStop(1, 'rgba(120,240,225,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, R + 16, R + 12, 0, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(200,255,250,0.5)';
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 2; i++) {
+          const a = this.time * 1.5 + i * Math.PI;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, R + 8 + i * 4, a, a + 1.2);
+          ctx.stroke();
+        }
+      }
+      if (p.eff === PU.MAGNET) {
+        // Magnet reach: rotating dashed field ring + a pull line to a ball in range.
+        const reach = R + B.R + 1 + PU_TUNE.MAG_RANGE;
+        ctx.strokeStyle = 'rgba(255,80,95,0.4)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 8]);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, reach, -this.time * 2.5, -this.time * 2.5 + TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const d = Math.hypot(b.x - p.x, b.y - p.y);
+        if (d < reach + B.R && d > R) {
+          ctx.strokeStyle = `rgba(255,120,130,${0.25 + 0.25 * Math.sin(this.time * 20)})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
       if (p.sl > 0) {
         ctx.fillStyle = 'rgba(120,220,255,0.18)';
         ctx.beginPath();
@@ -590,6 +657,8 @@ export class Renderer {
     const rxt = rx * s;
     const ryt = ry * s;
     if (gx < -60 || gx > this.W + 60 || gy < -80 || gy > this.H + 60) return;
+    // Ghost: see-through, flickering body.
+    if (p.eff === PU.GHOST) ctx.globalAlpha = 0.38 + 0.12 * Math.sin(this.time * 11 + p.id);
 
     // Motion ghosts while sliding / sprinting fast
     const sp = Math.hypot(p.vx, p.vy);
@@ -700,6 +769,81 @@ export class Renderer {
     ctx.fillText(String(p.number), 0, 1);
     ctx.restore();
     ctx.globalAlpha = 1;
+    this.drawStatus(p, tx, ty, rxt, ryt);
+  }
+
+  /** Dazed stars circling the token, a dizzy spiral for reversed controls. */
+  drawStatus(p, tx, ty, rxt, ryt) {
+    const { ctx } = this;
+    if (p.db === PU.DIZZY) {
+      ctx.save();
+      ctx.translate(tx, ty);
+      ctx.scale(1, ryt / rxt);
+      ctx.rotate(-this.time * 7);
+      ctx.strokeStyle = 'rgba(215,140,255,0.95)';
+      ctx.lineWidth = Math.max(1.6, rxt * 0.13);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i <= 40; i++) {
+        const t = i / 40;
+        const a = t * TAU * 2.2;
+        const r = rxt * 0.15 + t * rxt * 0.8;
+        if (i) ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.restore();
+    }
+    if (p.st > 0) {
+      ctx.fillStyle = '#ffe14d';
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 3; i++) {
+        const a = this.time * 6 + (i * TAU) / 3;
+        const x = tx + Math.cos(a) * rxt * 1.15;
+        const y = ty - ryt * 0.6 + Math.sin(a) * ryt * 0.7;
+        this.star(x, y, Math.max(4, rxt * 0.42), this.time * 4 + i);
+        ctx.stroke();
+      }
+    }
+  }
+
+  /** Energy curtain across a goal mouth while that team's shield is up. */
+  drawShield(f, team, kit, ticks) {
+    const { ctx, cam } = this;
+    const x = (team === 0 ? -1 : 1) * f.hw;
+    const pr = (y, z) => cam.project(x, y, z);
+    const info = PU_INFO[PU.SHIELD];
+    // Flicker during the last two seconds.
+    if (ticks < 120 && Math.floor(this.time * 10) % 2 === 0) return;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 5);
+    const a = pr(-f.gh, 0);
+    const b = pr(f.gh, 0);
+    const c = pr(f.gh, f.bar);
+    const d = pr(-f.gh, f.bar);
+    const g = ctx.createLinearGradient(a[0], a[1], d[0], d[1]);
+    g.addColorStop(0, rgba(kit.primary, 0.42 + pulse * 0.12));
+    g.addColorStop(1, rgba(info.color, 0.12 + pulse * 0.08));
+    ctx.fillStyle = g;
+    this.quad([a, b, c, d]);
+    ctx.fill();
+    // Moving scan lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const z = ((this.time * 30 + (i * f.bar) / 4) % f.bar);
+      const p0 = pr(-f.gh, z);
+      const p1 = pr(f.gh, z);
+      ctx.moveTo(p0[0], p0[1]);
+      ctx.lineTo(p1[0], p1[1]);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = rgba(info.color, 0.9);
+    ctx.lineWidth = 2;
+    this.quad([a, b, c, d]);
+    ctx.stroke();
   }
 
   drawBall(b, view) {
@@ -793,6 +937,8 @@ export class Renderer {
   drawPowerUp(u) {
     const { ctx, cam } = this;
     const info = PU_INFO[u.k];
+    if (!info) return;
+    const color = u.k === PU.MYSTERY ? hslHex((this.time * 140 + u.id * 40) % 360, 0.85, 0.58) : info.color;
     const bob = Math.sin(this.time * 3 + u.id) * 3;
     const [x, y, s] = cam.project(u.x, u.y, 20 + bob);
     const r = 12 * cam.zoom * s;
@@ -803,15 +949,15 @@ export class Renderer {
     ctx.translate(x, y);
     ctx.scale(pop, pop);
     const glow = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 2.4);
-    glow.addColorStop(0, rgba(info.color, 0.55));
-    glow.addColorStop(1, rgba(info.color, 0));
+    glow.addColorStop(0, rgba(color, 0.55));
+    glow.addColorStop(1, rgba(color, 0));
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(0, 0, r * 2.4, 0, TAU);
     ctx.fill();
     const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
-    g.addColorStop(0, shade(info.color, 0.45));
-    g.addColorStop(1, shade(info.color, -0.25));
+    g.addColorStop(0, shade(color, 0.45));
+    g.addColorStop(1, shade(color, -0.25));
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, TAU);
@@ -879,6 +1025,66 @@ export class Renderer {
         }
       }
       ctx.stroke();
+    } else if (k === PU.MAGNET) {
+      // Horseshoe magnet with silver tips
+      ctx.lineWidth = s * 0.42;
+      ctx.arc(0, -s * 0.05, s * 0.55, Math.PI, 0, true);
+      ctx.moveTo(-s * 0.55, -s * 0.05);
+      ctx.lineTo(-s * 0.55, -s * 0.6);
+      ctx.moveTo(s * 0.55, -s * 0.05);
+      ctx.lineTo(s * 0.55, -s * 0.6);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(40,40,60,0.55)';
+      ctx.fillRect(-s * 0.76, -s * 0.95, s * 0.42, s * 0.3);
+      ctx.fillRect(s * 0.34, -s * 0.95, s * 0.42, s * 0.3);
+    } else if (k === PU.SHIELD) {
+      ctx.moveTo(0, -s);
+      ctx.lineTo(s * 0.85, -s * 0.62);
+      ctx.bezierCurveTo(s * 0.85, s * 0.2, s * 0.45, s * 0.7, 0, s);
+      ctx.bezierCurveTo(-s * 0.45, s * 0.7, -s * 0.85, s * 0.2, -s * 0.85, -s * 0.62);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,90,60,0.6)';
+      ctx.lineWidth = s * 0.16;
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 0.6);
+      ctx.lineTo(0, s * 0.6);
+      ctx.moveTo(-s * 0.5, -s * 0.2);
+      ctx.lineTo(s * 0.5, -s * 0.2);
+      ctx.stroke();
+    } else if (k === PU.GHOST) {
+      ctx.moveTo(-s * 0.75, s * 0.9);
+      ctx.lineTo(-s * 0.75, -s * 0.15);
+      ctx.arc(0, -s * 0.15, s * 0.75, Math.PI, 0);
+      ctx.lineTo(s * 0.75, s * 0.9);
+      for (let i = 0; i < 3; i++) {
+        const x0 = s * 0.75 - (i * s * 1.5) / 3;
+        ctx.quadraticCurveTo(x0 - s * 0.25, s * 0.5, x0 - s * 0.5, s * 0.9);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(30,40,60,0.85)';
+      ctx.beginPath();
+      ctx.ellipse(-s * 0.28, -s * 0.15, s * 0.15, s * 0.22, 0, 0, TAU);
+      ctx.ellipse(s * 0.28, -s * 0.15, s * 0.15, s * 0.22, 0, 0, TAU);
+      ctx.fill();
+    } else if (k === PU.SHOCK) {
+      // Burst: eight rays around a dot
+      ctx.lineWidth = s * 0.2;
+      for (let i = 0; i < 8; i++) {
+        const a = (i * TAU) / 8;
+        ctx.moveTo(Math.cos(a) * s * 0.45, Math.sin(a) * s * 0.45);
+        ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s);
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.3, 0, TAU);
+      ctx.fill();
+    } else if (k === PU.MYSTERY) {
+      ctx.font = `700 ${Math.round(s * 1.9)}px "Russo One", system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', 0, s * 0.08);
     } else {
       ctx.arc(-s * 0.15, s * 0.2, s * 0.5, 0, TAU);
       ctx.fill();

@@ -1,10 +1,29 @@
 // Modal dialogs: create room, practice, settings, help, in-game menu, end of match.
 
 import { el, esc, icon, seg, toggle, openModal } from './dom.js';
-import { KITS } from '../../shared/constants.js';
+import {
+  KITS, PU, PU_INFO, PU_LEVEL_NAMES, puLevel,
+} from '../../shared/constants.js';
 import { BOT_LEVEL_NAMES } from '../../shared/bot.js';
 
 const upper = (s) => String(s).toLocaleUpperCase('tr');
+
+// Help screen: every pickup (and the curses hidden in the surprise box).
+const PU_HELP = [PU.FIRE, PU.GIANT, PU.SPEED, PU.MAGNET, PU.GHOST, PU.SHIELD, PU.ICE, PU.SHOCK, PU.RUBBER, PU.MYSTERY, PU.DIZZY, PU.SLIPPY];
+const PU_HELP_TEXT = {
+  [PU.FIRE]: 'Sonraki vuruşun alev alır, çok sert gider; çarptığı oyuncuyu savurup sersemletir.',
+  [PU.GIANT]: '8 sn kocaman ve ağır olursun: rakipleri itersin, kaleyi kapatırsın.',
+  [PU.SPEED]: '6 sn çok daha hızlı koşar, daha çabuk ivmelenirsin.',
+  [PU.MAGNET]: '7 sn top ayağına yapışır, yakındaki yavaş topları kendine çeker.',
+  [PU.GHOST]: '6 sn oyuncuların içinden geçersin; şok ve ateş topu sana işlemez.',
+  [PU.SHIELD]: 'Kalenin önünde enerji perdesi: ilk şutu geri çevirir (12 sn).',
+  [PU.ICE]: 'Rakip takımın tamamı 4 sn yavaşlar.',
+  [PU.SHOCK]: 'Anında patlar: yakındaki rakipleri savurur ve kısa süre sersemletir.',
+  [PU.RUBBER]: 'Top 10 sn bantlardan ve oyunculardan hız kaybetmeden seker.',
+  [PU.MYSTERY]: 'İçinden rastgele bir güçlendirme çıkar… ya da bir lanet!',
+  [PU.DIZZY]: 'Lanet: 3.5 sn kontrollerin ters döner.',
+  [PU.SLIPPY]: 'Lanet: 4.5 sn ayakların buzda gibi kayar.',
+};
 
 export function statsTablesHtml(players, kits, myId, { rating = true } = {}) {
   const team = (t) => {
@@ -12,15 +31,15 @@ export function statsTablesHtml(players, kits, myId, { rating = true } = {}) {
     const body = rows.map((p) => `
       <tr class="${p.id === myId ? 'me' : ''}">
         <td><span class="pn">${esc(p.name)}${p.bot ? ' <em>bot</em>' : ''}${p.ownGoals ? ` <em title="Kendi kalesine">${p.ownGoals} k.k.</em>` : ''}</span></td>
-        <td>${p.goals}</td><td>${p.assists}</td><td>${p.shots}</td>
+        <td>${p.goals}</td><td>${p.assists}</td><td>${p.shots}</td><td>${p.saves || 0}</td><td>${p.tackles || 0}</td>
         ${rating && p.rating !== undefined ? `<td><span class="rating ${p.rating >= 8 ? 'hi' : ''}">${p.rating.toFixed(1)}</span></td>` : ''}
       </tr>`).join('');
     return `
       <div class="stats-team">
         <h4><i style="--k:${kits[t].primary}"></i>${esc(kits[t].name)}</h4>
         <table class="stats">
-          <thead><tr><th>Oyuncu</th><th title="Gol">G</th><th title="Asist">A</th><th title="Şut">Şut</th>${rating && rows.some((p) => p.rating !== undefined) ? '<th>Puan</th>' : ''}</tr></thead>
-          <tbody>${body || '<tr><td colspan="7" class="muted">—</td></tr>'}</tbody>
+          <thead><tr><th>Oyuncu</th><th title="Gol">G</th><th title="Asist">A</th><th title="Şut">Şut</th><th title="Kurtarış">Kur</th><th title="Top kapma">Kap</th>${rating && rows.some((p) => p.rating !== undefined) ? '<th>Puan</th>' : ''}</tr></thead>
+          <tbody>${body || '<tr><td colspan="8" class="muted">—</td></tr>'}</tbody>
         </table>
       </div>`;
   };
@@ -95,7 +114,8 @@ export class Modals {
 
   practice() {
     const app = this.app;
-    const opts = { teamSize: 3, level: 1, duration: 180, powerups: true, ...(app.prefs.practice || {}) };
+    const opts = { teamSize: 3, level: 1, duration: 180, powerups: 2, ...(app.prefs.practice || {}) };
+    opts.powerups = puLevel(opts.powerups);
     const m = openModal({
       id: 'practice',
       title: 'Antrenman',
@@ -104,7 +124,7 @@ export class Modals {
         el('div', { class: 'set-row' }, el('label', { text: 'Takım boyutu' }), seg([1, 2, 3, 4].map((v) => ({ v, label: `${v}v${v}` })), opts.teamSize, (v) => { opts.teamSize = v; }, { cls: 'lime' })),
         el('div', { class: 'set-row' }, el('label', { text: 'Rakip seviyesi' }), seg([0, 1, 2].map((v) => ({ v, label: BOT_LEVEL_NAMES[v] })), opts.level, (v) => { opts.level = v; })),
         el('div', { class: 'set-row' }, el('label', { text: 'Süre' }), seg([60, 180, 300].map((v) => ({ v, label: `${v / 60} dk` })), opts.duration, (v) => { opts.duration = v; })),
-        el('div', { class: 'toggle-row' }, el('span', { text: 'Rastgele güçlendirmeler' }), toggle(opts.powerups !== false, (v) => { opts.powerups = v; }))),
+        el('div', { class: 'set-row' }, el('label', { text: 'Güçlendirmeler' }), seg([0, 1, 2, 3].map((v) => ({ v, label: PU_LEVEL_NAMES[v] })), opts.powerups, (v) => { opts.powerups = v; }))),
       foot: [
         el('button', { class: 'btn ghost', type: 'button', onclick: () => m.close() }, 'Vazgeç'),
         el('button', {
@@ -186,9 +206,15 @@ export class Modals {
             <li>Top yakınındayken önünde çıkan <b>oklar</b> vuruşta topun gideceği yönü gösterir.</li>
             <li>Tuşa basılıyken etrafında beyaz bir halka çıkar; top değdiği anda vuruş olur.</li>
             <li>Topla dönerken yavaş dön: top ayağına yapışmaz ama hafifçe seni takip eder.</li>
-            <li><b>Güçlendirmeler:</b> maç sırasında sahada parlayan rozetler belirir; üstünden geçerek kap. <b>Ateş Topu</b> sonraki vuruşunu alevli ve çok sert yapar, <b>Dev</b> seni büyütür, <b>Hız</b> hızlandırır, <b>Buz</b> rakipleri yavaşlatır, <b>Lastik Top</b> topu hiç yavaşlamadan sektirir.</li>
+            <li><b>Falso:</b> vurduktan hemen sonra yön tuşunu yana çevirirsen top o yöne kavis alır. Defansın ya da kalecinin yanından dolandırmak için kullan; düz vuruş için yönü vuruş doğrultusunda tut.</li>
+            <li><b>Kurtarış ve top kapma</b> maç sonu puanını artırır: kaleye giden şutu gövdenle kes, rakibin ayağındaki topu çal.</li>
             <li><b>Kenarlar banttır:</b> top duvarlardan seker, banttan gol atabilirsin. Köşeler yuvarlak olduğu için top köşede sıkışmaz.</li>
           </ul>
+        </div>
+        <div class="help-section">
+          <h3>Güçlendirmeler</h3>
+          <p class="muted small" style="margin:0 0 8px">Maç sırasında sahada parlayan rozetler belirir, üstünden geçen kapar. Sıklığı oda ayarlarından seçilir (Kapalı / Az / Normal / Kaos).</p>
+          <div class="pu-help">${PU_HELP.map((k) => `<div class="pu-help-item" style="--pc:${PU_INFO[k].color}"><b>${esc(PU_INFO[k].name)}</b><span>${esc(PU_HELP_TEXT[k])}</span></div>`).join('')}</div>
         </div>`,
     });
   }
@@ -266,7 +292,7 @@ export class Modals {
             <div class="poss-labels"><span>%${result.possession[0]}</span><span>Topa sahip olma</span><span>%${result.possession[1]}</span></div>
           </div>
         </div>
-        ${mvp ? `<div class="mvp"><span class="mvp-badge">MVP</span><div><div class="mvp-name">${esc(mvp.name)}</div><div class="mvp-sub">${esc(kits[mvp.team].name)} · ${mvp.goals} gol · ${mvp.assists} asist · ${mvp.shots} şut</div></div><div class="mvp-rating">${mvp.rating.toFixed(1)}</div></div>` : ''}
+        ${mvp ? `<div class="mvp"><span class="mvp-badge">MVP</span><div><div class="mvp-name">${esc(mvp.name)}</div><div class="mvp-sub">${esc(kits[mvp.team].name)} · ${mvp.goals} gol · ${mvp.assists} asist · ${mvp.shots} şut${mvp.saves ? ` · ${mvp.saves} kurtarış` : ''}</div></div><div class="mvp-rating">${mvp.rating.toFixed(1)}</div></div>` : ''}
         ${statsTablesHtml(result.players, kits, myId)}`,
     });
     const foot = [];

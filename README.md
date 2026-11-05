@@ -12,18 +12,26 @@ oyuncular forma desenli pullar olarak görünür.
 - Tuş basılıyken oyuncunun etrafında beyaz halka çıkar, top değdiği an vuruş olur (gelen topa direkt vuruş)
 - Top yakınındayken önünde çıkan oklar vuruş yönünü gösterir
 - Hafif top kontrolü: top ayağa yapışmaz ama dönüşlerde oyuncuyu hafifçe takip eder
+- **Falso (aftertouch):** vuruştan hemen sonra yön tuşunu yana çevirirsen top o yöne kavis alır (hız kaybetmez); düz vuruşlar düz gider. Zor botlar da kendi şutlarını falsoyla hedefe döndürür
 - Saha kenarları banttır, top duvarlardan seker; köşeler bilardo masası gibi yuvarlatılmıştır, top köşede sıkışmaz
 - Karşılıklı aynı anda vuruşta top bloke olur, asla oyuncunun içinden geçmez
 - Her golden sonra kısa kutlama ve **3-2-1 geri sayım**; antrenmanda menü açıkken oyun duraklar
-- **Rastgele güçlendirmeler** (oda ayarından açılıp kapatılır): maç sırasında sahada rozetler belirir, üstünden geçen kapar
-  - 🔥 **Ateş Topu**: sonraki vuruş alevli ve çok sert, çarptığı oyuncuyu savurur
-  - 🍄 **Dev**: 8 saniye 1.5 kat büyük gövde
-  - ⚡ **Hız**: 6 saniye %40 daha hızlı
+- **Rastgele güçlendirmeler** (oda ayarında sıklık: Kapalı / Az / Normal / **Kaos**): maç sırasında sahada rozetler belirir, üstünden geçen kapar
+  - 🔥 **Ateş Topu**: sonraki vuruş alevli ve çok sert, çarptığı oyuncuyu savurup kısa süre sersemletir
+  - 🍄 **Dev**: 8 saniye 1.5 kat büyük ve ağır gövde, rakipleri iterek yol açar
+  - ⚡ **Hız**: 6 saniye %40 daha hızlı ve daha çabuk ivmelenme
+  - 🧲 **Mıknatıs**: 7 saniye top ayağa yapışır, yakındaki yavaş topu çeker ve gövdenin önüne döndürür (sert şutları tutmaz)
+  - 👻 **Hayalet**: 6 saniye oyuncuların içinden geçersin; şok dalgası ve ateş topu işlemez
+  - 🛡️ **Kalkan**: kalenin önüne enerji perdesi kurulur, ilk şutu geri çevirip kırılır (12 saniye)
   - ❄️ **Buz**: rakip takımın tamamı 4 saniye yavaşlar
+  - 💥 **Şok Dalgası**: anında patlar, yakındaki rakipleri savurur ve sersemletir
   - 🎾 **Lastik Top**: top 10 saniye bantlardan ve oyunculardan hız kaybetmeden seker
+  - ❓ **Sürpriz Kutu**: içinden rastgele bir güçlendirme çıkar… ya da bir lanet: **Ters Köşe** (kontroller ters) veya **Kaygan** (ayaklar buzda gibi kayar)
+- Botlar güçlendirmeleri bilerek kullanır: ateş topuyla uzaktan vurur, mıknatıs/hayaletle pas yerine top sürer, ters kontrole bir süre sonra alışır
+- **Kurtarış** (kaleye giden şutu gövdeyle kesmek) ve **top kapma** (rakibin ayağındaki topu çalmak) ayrı istatistik, oyuncu puanına katkı yapar; hat-trick anonsu
 - Santra kuralları, **altın gol**, gol limiti, süre seçimi
 - 3 zorlukta **botlar** (kaleci, top kovalayan, destek rolleri) boş yerleri doldurur
-- Maç sonu istatistikleri: gol, asist, şut, topa sahip olma, oyuncu puanı ve **MVP**
+- Maç sonu istatistikleri: gol, asist, şut, kurtarış, top kapma, topa sahip olma, oyuncu puanı ve **MVP**
 
 **Görsel / UX**
 - Gece maçı stadyumu: biçilmiş çim, tribünlerde animasyonlu taraftarlar, ışık parlamaları, flaşlar

@@ -3,14 +3,18 @@
 // Bots push the ball by running behind it and press KICK when their body lines up
 // with the target (goal, open teammate or a clearance direction).
 
-import { P, B, BTN, PHASE } from './constants.js';
+import {
+  P, B, AT, BTN, PHASE, PU, PU_INFO,
+} from './constants.js';
 import { teamPlayers, findPlayer, formationSpot, PHYS } from './physics.js';
 import { clamp, distToSegment, angleDiff, lerp } from './util.js';
 
+// confuse: ticks a reversed-controls curse fools the bot before it adapts.
+// curl: whether the bot bends its own shots back on target with aftertouch.
 const LEVELS = [
-  { name: 'Kolay', react: 14, speed: 0.8, tol: 0.5, err: 0.2, range: 0.32 },
-  { name: 'Orta', react: 7, speed: 0.92, tol: 0.36, err: 0.1, range: 0.4 },
-  { name: 'Zor', react: 3, speed: 1.0, tol: 0.26, err: 0.04, range: 0.48 },
+  { name: 'Kolay', react: 14, speed: 0.8, tol: 0.5, err: 0.2, range: 0.32, confuse: 110, curl: false },
+  { name: 'Orta', react: 7, speed: 0.92, tol: 0.36, err: 0.1, range: 0.4, confuse: 55, curl: false },
+  { name: 'Zor', react: 3, speed: 1.0, tol: 0.26, err: 0.04, range: 0.48, confuse: 22, curl: true },
 ];
 
 export const BOT_LEVEL_NAMES = LEVELS.map((l) => l.name);
@@ -39,6 +43,7 @@ export class BotBrain {
     this.pmy = 0;
     this.sx = null;
     this.sy = 0;
+    this.aim = null; // intended direction of the last shot (for aftertouch)
   }
 
   /**
@@ -59,8 +64,11 @@ export class BotBrain {
     this.steady = false;
     if (s.phase === PHASE.GOAL) this.moveTo(o, me, ctx.home.x, ctx.home.y);
     else if (ctx.isKeeper) this.keeper(s, me, ctx, o);
-    else if (ctx.isChaser && !ctx.kickoffWait) this.attack(s, me, ctx, o);
-    else this.support(s, me, ctx, o);
+    else if (ctx.isChaser && !ctx.kickoffWait) {
+      // A power-up right next to us while the ball is far away is worth the detour.
+      const far = Math.hypot(s.ball.x - me.x, s.ball.y - me.y) > 170;
+      if (!(far && this.grabPowerUp(s, me, ctx, o, 75))) this.attack(s, me, ctx, o);
+    } else this.support(s, me, ctx, o);
 
     // Off-ball positioning does not need instant reactions: give the steering some inertia
     // so supporting players glide instead of twitching between nearby targets.
@@ -71,6 +79,13 @@ export class BotBrain {
     }
     this.pmx = o.mx;
     this.pmy = o.my;
+    this.afterKick(s, me, o);
+
+    // Reversed controls: the bot is fooled for a moment, then steers the other way round.
+    if (me.db === PU.DIZZY && PU_INFO[PU.DIZZY].ticks - me.dt > this.cfg.confuse) {
+      o.mx = -o.mx;
+      o.my = -o.my;
+    }
 
     // Kick button handling: hold for a few ticks, then rest so the next press is a new edge.
     if (this.hold > 0) {
@@ -82,6 +97,33 @@ export class BotBrain {
       }
     }
     return o;
+  }
+
+  /**
+   * Right after our own kick the stick bends the ball (aftertouch). Keep the stick in line
+   * with the shot so it flies straight, or (hard bots) curl it back toward the intended target.
+   */
+  afterKick(s, me, o) {
+    const b = s.ball;
+    if (b.at <= 0 || b.ak !== me.id) return;
+    const sp = Math.hypot(b.vx, b.vy);
+    if (sp < 0.5) return;
+    const ux = b.vx / sp;
+    const uy = b.vy / sp;
+    if (this.cfg.curl && this.aim !== null) {
+      const diff = angleDiff(Math.atan2(uy, ux), this.aim);
+      if (Math.abs(diff) > 0.004) {
+        const k = clamp(Math.abs(diff) / (AT.TURN * 2), 0, 1);
+        const side = Math.sign(diff) * (AT.DEAD + (1 - AT.DEAD) * k);
+        const fwd = Math.sqrt(Math.max(0, 1 - side * side)) * 0.5;
+        o.mx = -uy * side + ux * fwd;
+        o.my = ux * side + uy * fwd;
+        return;
+      }
+    }
+    const along = o.mx * ux + o.my * uy;
+    o.mx = ux * along;
+    o.my = uy * along;
   }
 
   context(s, me, humans) {
@@ -259,7 +301,10 @@ export class BotBrain {
     // Ball on the boards / in a corner: accept any kick that still goes our way.
     const onBoards = Math.abs(b.y) > f.hh - 30 || Math.abs(b.x) > f.hw - 30;
     const ourWay = kx * Math.cos(ang) > 0;
-    if ((shoot && diff < this.cfg.tol) || ((onBoards || dig) && diff < 1.3 && ourWay)) this.hold = 6;
+    if ((shoot && diff < this.cfg.tol) || ((onBoards || dig) && diff < 1.3 && ourWay)) {
+      this.hold = 6;
+      this.aim = shoot ? ang - this.err : null;
+    }
   }
 
   shotAngle(s, ctx) {
@@ -300,15 +345,19 @@ export class BotBrain {
     const { f, b, goalX, opps } = ctx;
     const dGoal = Math.hypot(goalX - b.x, b.y);
     const shot = this.shotAngle(s, ctx);
-    const inRange = dGoal < this.cfg.range * f.w;
-    if (inRange && (shot.clear > 0 || dGoal < f.w * 0.15)) {
+    // A fireball goes through anything: shoot from further out and through traffic.
+    const fire = me.eff === PU.FIRE;
+    const inRange = dGoal < this.cfg.range * f.w * (fire ? 1.35 : 1);
+    if (inRange && (shot.clear > (fire ? -12 : 0) || dGoal < f.w * 0.15)) {
       this.strike(s, me, o, shot.ang, true);
       return;
     }
-    // Under pressure: pass to an open teammate further forward.
+    // Under pressure: pass to an open teammate further forward. With a magnet or as a
+    // ghost the ball is safe at our feet, so keep dribbling instead.
     let pressure = Infinity;
     for (const q of opps) pressure = Math.min(pressure, Math.hypot(q.x - b.x, q.y - b.y));
-    if (pressure < 80) {
+    const keep = me.eff === PU.GHOST || me.eff === PU.MAGNET;
+    if (pressure < 80 && !keep) {
       const mate = this.openMate(s, me, ctx);
       if (mate) {
         this.strike(s, me, o, Math.atan2(mate.y - b.y, mate.x - b.x) + this.err, true);
@@ -368,10 +417,10 @@ export class BotBrain {
   }
 
   /** Detour to a nearby power-up if we are the closest teammate to it. */
-  grabPowerUp(s, me, ctx, o) {
-    if (!s.pu || !s.pu.length || s.phase !== PHASE.PLAY) return false;
+  grabPowerUp(s, me, ctx, o, maxD = 220) {
+    if (!s.pu || !s.pu.length || s.phase !== PHASE.PLAY || me.st > 0) return false;
     let best = null;
-    let bd = 220;
+    let bd = maxD;
     for (const u of s.pu) {
       const d = Math.hypot(u.x - me.x, u.y - me.y);
       if (d >= bd) continue;
