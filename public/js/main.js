@@ -34,8 +34,10 @@ class App {
     this.prefs = loadPrefs();
     this.canvas = $('#game');
     this.renderer = new Renderer(this.canvas);
-    this.renderer.quality = this.prefs.quality;
+    this.autoQuality = 'high'; // what 'auto' currently means; only ever steps down
+    this.renderer.quality = this.quality();
     this.renderer.resize();
+    this.fps = { times: [], cooldown: 3 };
     this.audio = new Audio();
     this.audio.volume = this.prefs.volume;
     this.audio.muted = this.prefs.muted;
@@ -75,6 +77,7 @@ class App {
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
 
+    let lastT = 0;
     const loop = (t) => {
       if (this.session) {
         try {
@@ -83,6 +86,8 @@ class App {
           console.error(err);
         }
       }
+      if (lastT) this.watchFrameRate(t - lastT);
+      lastT = t;
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -96,18 +101,54 @@ class App {
     savePrefs(this.prefs);
   }
 
+  /** Effective graphics quality ('auto' resolves to the current automatic level). */
+  quality() {
+    return this.prefs.quality === 'auto' ? this.autoQuality : this.prefs.quality;
+  }
+
+  applyQuality() {
+    const q = this.quality();
+    this.renderer.setQuality(q);
+    if (this.session) {
+      this.session.fx.quality = q;
+      this.renderer.prepare(this.session.field, this.session.kits);
+    }
+  }
+
+  /**
+   * Automatic quality: if frames keep taking too long (below ~45 fps on average for a couple
+   * of seconds) while a match is on screen, step the quality down one level. Never steps up,
+   * so it cannot flip back and forth.
+   */
+  watchFrameRate(dt) {
+    const f = this.fps;
+    if (this.prefs.quality !== 'auto' || this.autoQuality === 'low' || document.hidden) return;
+    if (dt > 250) {
+      f.times.length = 0; // tab switch / hitch: not a sign of a slow device
+      return;
+    }
+    if (f.cooldown > 0) {
+      f.cooldown -= dt / 1000;
+      return;
+    }
+    f.times.push(dt);
+    if (f.times.length < 150) return;
+    const avg = f.times.reduce((a, b) => a + b, 0) / f.times.length;
+    f.times.length = 0;
+    if (avg <= 22 || this.screen !== 'game') return;
+    this.autoQuality = this.autoQuality === 'high' ? 'medium' : 'low';
+    f.cooldown = 4;
+    this.applyQuality();
+    toast(`Akıcılık için grafik kalitesi düşürüldü (${this.autoQuality === 'medium' ? 'orta' : 'düşük'}).`);
+  }
+
   setPref(key, value) {
     this.prefs[key] = value;
+    if (key === 'quality') this.prefs.qualitySet = true;
     this.savePrefs();
     if (key === 'volume') this.audio.setVolume(value);
     if ((key === 'touchAlpha' || key === 'touchSize') && this.touch) this.touch.setLook(this.prefs.touchAlpha, this.prefs.touchSize);
-    if (key === 'quality') {
-      this.renderer.setQuality(value);
-      if (this.session) {
-        this.session.fx.quality = value;
-        this.renderer.prepare(this.session.field, this.session.kits);
-      }
-    }
+    if (key === 'quality') this.applyQuality();
   }
 
   setMuted(m) {

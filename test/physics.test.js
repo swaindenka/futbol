@@ -410,7 +410,7 @@ test('picking up Giant makes the body bigger, then it wears off', () => {
   assert.ok(ev.some((e) => e.e === 'pu' && e.p === 1 && e.k === PU.GIANT));
   assert.equal(s.pu.length, 0);
   assert.ok(radius(p) > P.R * 1.4);
-  run(s, 481);
+  run(s, PU_INFO[PU.GIANT].ticks + 1);
   assert.equal(radius(p), P.R);
 });
 
@@ -422,8 +422,8 @@ test('Fire: the next kick is much harder, sets the ball on fire and is used up',
     p.x = 0;
     p.y = 0;
     if (fire) {
-      p.eff = PU.FIRE;
-      p.et = 480;
+      p.cg = PU.FIRE;
+      p.fb = PU_INFO[PU.FIRE].ticks;
     }
     s.ball.x = P.R + B.R + 1;
     s.ball.y = 0;
@@ -434,7 +434,7 @@ test('Fire: the next kick is much harder, sets the ball on fire and is used up',
   const fire = kickSpeed(true);
   assert.ok(fire.v > normal.v * 1.4, `fire ${fire.v} vs normal ${normal.v}`);
   assert.ok(fire.s.ball.fire > 0);
-  assert.equal(fire.p.eff, 0, 'fireball used up');
+  assert.equal(fire.p.fb, 0, 'fireball used up');
 });
 
 test('Ice slows the whole other team', () => {
@@ -665,7 +665,7 @@ test('Ghost passes through opponents, a Giant shoves them', () => {
   assert.ok(big.a.x > normal.a.x + 30, `the giant pushes through (${big.a.x.toFixed(0)} vs ${normal.a.x.toFixed(0)})`);
 });
 
-test('Shock wave knocks back and dazes nearby opponents only', () => {
+test('Shock kick: the next kick blasts and dazes nearby opponents only', () => {
   const s = makeState('small', { ...rules, powerups: true });
   for (let i = 1; i <= 4; i++) addPlayer(s, i, i <= 2 ? 0 : 1);
   resetKickoff(s);
@@ -684,10 +684,18 @@ test('Shock wave knocks back and dazes nearby opponents only', () => {
   s.ball.y = 200;
   s.pu.push({ id: 1, k: PU.SHOCK, x: 0, y: 0, t: 0 });
   run(s, 1);
+  assert.equal(me.cg, PU.SHOCK, 'charged, released by the next kick');
+  assert.equal(near.st, 0, 'nothing happens yet');
+  s.ball.x = P.R + B.R + 1;
+  s.ball.y = 0;
+  near.x = 80;
+  near.y = 30;
+  const ev = run(s, 2, { 1: { mx: 0, my: 0, a: 0, b: BTN.KICK } });
+  assert.ok(ev.some((e) => e.e === 'shock' && e.p === 1 && e.n === 1));
   assert.ok(near.st > 0 && near.vx > 3, 'opponent blasted');
   assert.equal(far.st, 0, 'far opponent untouched');
   assert.equal(mate.st, 0, 'teammate untouched');
-  assert.equal(me.eff, 0, 'instant, nothing to hold');
+  assert.equal(me.cg, 0, 'used up');
 });
 
 test('Surprise box: content rolled at spawn, the same on the client prediction', () => {
@@ -893,4 +901,152 @@ test('a bot\'s shot is not bent by its own movement (unless it curls it on purpo
     }
     assert.ok(kicked, 'the bot kicked');
   }
+});
+
+// ---------------------------------------------------------------------------
+// Rebalanced power-ups
+
+test('fireball bursts through the first opponent, then is a normal ball', () => {
+  const s = puSetup();
+  const a = findPlayer(s, 1);
+  const k = findPlayer(s, 2);
+  a.y = 250;
+  k.x = s.field.hw - 80;
+  k.y = 0;
+  s.ball.x = 0;
+  s.ball.y = 0;
+  s.ball.vx = 16;
+  s.ball.fire = 90;
+  s.ball.lt = 0;
+  s.ball.last = 1;
+  const ev = run(s, 60);
+  assert.ok(ev.some((e) => e.e === 'blast' && e.p === 2), 'keeper blasted');
+  assert.ok(k.st > 0 || ev.some((e) => e.e === 'goal'), 'dazed');
+  assert.ok(ev.some((e) => e.e === 'goal' && e.t === 0 && e.p === 1), 'the fireball went through for a goal');
+  assert.ok(!ev.some((e) => e.e === 'save'), 'not a save');
+});
+
+test('a normal shot at the same keeper is stopped', () => {
+  const s = puSetup();
+  const a = findPlayer(s, 1);
+  const k = findPlayer(s, 2);
+  a.y = 250;
+  k.x = s.field.hw - 80;
+  k.y = 0;
+  s.ball.x = 0;
+  s.ball.y = 0;
+  s.ball.vx = 16;
+  s.ball.lt = 0;
+  const ev = run(s, 60);
+  assert.ok(!ev.some((e) => e.e === 'goal'));
+});
+
+test('kick charges stack with a buff; fire and shock share one slot', () => {
+  const s = puSetup();
+  const p = findPlayer(s, 1);
+  findPlayer(s, 2).y = 250;
+  p.eff = PU.SPEED;
+  p.et = 300;
+  s.pu.push({ id: 1, k: PU.FIRE, x: p.x, y: p.y, t: 0 });
+  run(s, 1);
+  assert.equal(p.eff, PU.SPEED, 'the buff stays');
+  assert.equal(p.cg, PU.FIRE);
+  s.pu.push({ id: 2, k: PU.SHOCK, x: p.x, y: p.y, t: 0 });
+  run(s, 1);
+  assert.equal(p.cg, PU.SHOCK, 'shock replaces the fireball');
+  run(s, PU_INFO[PU.SHOCK].ticks);
+  assert.equal(p.cg, 0, 'an unused charge runs out');
+  assert.equal(p.fb, 0);
+});
+
+test('a ghost dribbles the ball through an opponent who stands in the way', () => {
+  const dribble = (eff) => {
+    const s = puSetup();
+    const a = findPlayer(s, 1);
+    const c = findPlayer(s, 2);
+    a.x = -200;
+    a.y = 0;
+    a.eff = eff;
+    a.et = 400;
+    s.ball.x = a.x + P.R + B.R + 1;
+    s.ball.y = 0;
+    c.x = 0;
+    c.y = 0;
+    run(s, 120, { 1: { mx: 1, my: 0, a: 0, b: 0 }, 2: { mx: 0, my: 0, a: Math.PI, b: 0 } });
+    return s.ball.x;
+  };
+  const normal = dribble(0);
+  const g = dribble(PU.GHOST);
+  assert.ok(normal < 40, `blocked without the ghost (${normal.toFixed(0)})`);
+  assert.ok(g > 120, `the ghost carried it through (${g.toFixed(0)})`);
+});
+
+test('the rubber ball plays for the picker\'s team: harder kicks, no close control for the others', () => {
+  const kick = (team) => {
+    const s = puSetup();
+    const p = findPlayer(s, 1);
+    findPlayer(s, 2).y = 250;
+    s.ball.rub = 300;
+    s.ball.rt = team;
+    p.x = 0;
+    p.y = 0;
+    s.ball.x = P.R + B.R + 1;
+    s.ball.y = 0;
+    return run(s, 2, { 1: { mx: 0, my: 0, a: 0, b: BTN.KICK } }).find((e) => e.e === 'kick').v;
+  };
+  assert.ok(kick(0) > kick(1) * 1.1, 'own team kicks harder');
+  const follow = (team) => {
+    const s = puSetup();
+    const p = findPlayer(s, 1);
+    findPlayer(s, 2).y = 250;
+    s.ball.rub = 300;
+    s.ball.rt = team;
+    p.x = 0;
+    p.y = 0;
+    s.ball.x = P.R + B.R + 1;
+    s.ball.y = 0;
+    run(s, 40, { 1: { mx: 0.7, my: 0.7, a: 0, b: 0 } });
+    return Math.hypot(s.ball.x - p.x, s.ball.y - p.y);
+  };
+  assert.ok(follow(1) > follow(0) + 10, 'the other team cannot keep it at their feet');
+});
+
+test('a power-up lands with a warning and cannot be taken before it is ready', () => {
+  const s = makeState('small', { ...rules, powerups: 3 });
+  addPlayer(s, 1, 0);
+  addPlayer(s, 2, 1);
+  resetKickoff(s);
+  s.phase = PHASE.PLAY;
+  s.time = 1e6;
+  let spawn = null;
+  for (let i = 0; i < 2000 && !spawn; i++) spawn = step(s, true).find((e) => e.e === 'pus');
+  assert.ok(spawn);
+  const u = s.pu[s.pu.length - 1];
+  assert.ok(u.t < 0, 'landing');
+  const p = findPlayer(s, 1);
+  p.x = u.x;
+  p.y = u.y;
+  p.vx = p.vy = 0;
+  step(s, true);
+  assert.equal(s.pu.length, 1, 'not picked while landing');
+  let picked = false;
+  for (let i = 0; i < PU_TUNE.WARN + 2 && !picked; i++) {
+    p.x = u.x;
+    p.y = u.y;
+    picked = step(s, true).some((e) => e.e === 'pu' && e.p === 1);
+  }
+  assert.ok(picked, 'picked once landed');
+});
+
+test('snapshot carries kick charges and the rubber team', () => {
+  const s = puSetup();
+  const p = findPlayer(s, 1);
+  p.cg = PU.SHOCK;
+  p.fb = 77;
+  s.ball.rub = 10;
+  s.ball.rt = 1;
+  const d = JSON.parse(JSON.stringify(encodeSnapshot(s, [])));
+  const r = decodeSnapshot(d, { field: 'small', rules: s.rules });
+  const q = r.players.find((x) => x.id === 1);
+  assert.deepEqual([q.cg, q.fb, r.ball.rt], [PU.SHOCK, 77, 1]);
 });

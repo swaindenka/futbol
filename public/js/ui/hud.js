@@ -47,6 +47,8 @@ export class Hud {
 
   reset(session) {
     this.last = {};
+    this.puChips.innerHTML = '';
+    this.chipEls = new Map();
     this.feedEl.innerHTML = '';
     this.goalEl.innerHTML = '';
     this.bannerEl.innerHTML = '';
@@ -107,26 +109,23 @@ export class Hud {
     });
     if (follow && ++this.minimapTick % 3 === 0) this.app.renderer.drawMinimap(this.minimap, view);
 
-    // Active effects: my buff, my debuffs, shields on the goals and a rubber ball.
+    // Active effects: my buff, fireball charge, my debuffs, shields on the goals, rubber ball.
     const me = session.myPlayer();
     const chips = [];
-    if (me && me.eff && PU_INFO[me.eff]) chips.push([me.eff, me.eff === PU.FIRE ? 'sonraki vuruş' : '', me.et / PU_INFO[me.eff].ticks]);
-    if (me && me.sl > 0) chips.push([PU.ICE, 'yavaşladın', me.sl / PU_INFO[PU.ICE].ticks]);
-    if (me && me.db && PU_INFO[me.db]) chips.push([me.db, 'lanet', me.dt / PU_INFO[me.db].ticks]);
+    if (me && me.eff && PU_INFO[me.eff]) chips.push([me.eff, '', me.et]);
+    if (me && me.fb > 0 && PU_INFO[me.cg]) chips.push([me.cg, 'sonraki vuruş', me.fb]);
+    if (me && me.sl > 0) chips.push([PU.ICE, 'yavaşladın', me.sl]);
+    if (me && me.db && PU_INFO[me.db]) chips.push([me.db, 'lanet', me.dt]);
     for (let t = 0; t < 2; t++) {
       if (!(s.sh[t] > 0)) continue;
       const note = me ? (me.team === t ? 'kalen' : 'rakip kale') : session.kits[t].name;
-      chips.push([PU.SHIELD, note, s.sh[t] / PU_INFO[PU.SHIELD].ticks]);
+      chips.push([PU.SHIELD, note, s.sh[t]]);
     }
-    if (s.ball.rub > 0) chips.push([PU.RUBBER, '', s.ball.rub / PU_INFO[PU.RUBBER].ticks]);
-    const key = chips.map((c) => `${c[0]}:${c[1]}:${Math.ceil(c[2] * 20)}`).join('|');
-    this.set('chips', key, () => {
-      this.puChips.innerHTML = chips.map(([k, note, left]) => {
-        const info = PU_INFO[k];
-        const cls = info.kind === 'curse' ? 'pu-chip curse' : 'pu-chip';
-        return `<div class="${cls}" style="--pc:${info.color}"><b>${esc(info.name)}</b>${note ? `<small>${esc(note)}</small>` : ''}<i style="width:${Math.round(left * 100)}%"></i></div>`;
-      }).join('');
-    });
+    if (s.ball.rub > 0) {
+      const note = me && s.ball.rt >= 0 ? (s.ball.rt === me.team ? 'sizin lehinize' : 'rakip lehine') : '';
+      chips.push([PU.RUBBER, note, s.ball.rub]);
+    }
+    this.updateChips(chips);
 
     if (session.mode === 'online') {
       const rtt = Math.round(this.app.net.rtt);
@@ -134,6 +133,45 @@ export class Hud {
         this.ping.textContent = `${v} ms`;
         this.ping.style.color = v < 80 ? '' : v < 160 ? 'var(--gold)' : 'var(--red)';
       });
+    }
+  }
+
+  /** Keyed update of the power-up chips: nodes are reused so the timer bars slide smoothly. */
+  updateChips(chips) {
+    if (!this.chipEls) this.chipEls = new Map();
+    const seen = new Set();
+    for (const [k, note, ticks] of chips) {
+      const info = PU_INFO[k];
+      const id = `${k}:${note}`;
+      seen.add(id);
+      let c = this.chipEls.get(id);
+      if (!c) {
+        const icon = this.app.renderer.iconURL(k);
+        const node = el('div', {
+          class: info.kind === 'curse' ? 'pu-chip curse' : 'pu-chip',
+          html: `${icon ? `<img src="${icon}" alt="">` : ''}<b>${esc(info.name)}</b>${note ? `<small>${esc(note)}</small>` : ''}<em></em><i></i>`,
+        });
+        node.style.setProperty('--pc', info.color); // custom properties cannot go through Object.assign
+        c = { node, sec: node.querySelector('em'), bar: node.querySelector('i'), last: '', ending: null };
+        this.chipEls.set(id, c);
+        this.puChips.append(node);
+      }
+      const secs = String(Math.ceil(ticks / 60));
+      if (c.last !== secs) {
+        c.last = secs;
+        c.sec.textContent = `${secs}s`;
+      }
+      c.bar.style.width = `${Math.round(Math.min(1, ticks / (info.ticks || 1)) * 1000) / 10}%`;
+      const ending = ticks < 90;
+      if (ending !== c.ending) {
+        c.ending = ending;
+        c.node.classList.toggle('ending', ending);
+      }
+    }
+    for (const [id, c] of this.chipEls) {
+      if (seen.has(id)) continue;
+      c.node.remove();
+      this.chipEls.delete(id);
     }
   }
 

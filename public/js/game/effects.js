@@ -15,7 +15,16 @@ export class Effects {
     this.excite = 0; // crowd excitement 0..1
     this.ledFlash = null; // { text, color, t }
     this.camFlashes = [];
+    this.texts = []; // floating world-space labels: { x, y, text, color, t, max, big }
     this.quality = 'high';
+  }
+
+  /** A short label that pops up above a spot on the pitch and floats away. */
+  floatText(x, y, text, color = '#ffffff', big = false) {
+    // Do not stack labels on top of each other at the same spot.
+    for (const t of this.texts) if (Math.abs(t.x - x) < 40 && Math.abs(t.y - y) < 30 && t.t < 0.4) t.y -= 22;
+    this.texts.push({ x, y, text, color, t: 0, max: big ? 1.6 : 1.25, big });
+    if (this.texts.length > 12) this.texts.shift();
   }
 
   clear() {
@@ -23,6 +32,7 @@ export class Effects {
     this.rings.length = 0;
     this.confetti.length = 0;
     this.trail.length = 0;
+    this.texts.length = 0;
     this.flash = 0;
     this.shake = 0;
     this.excite = 0;
@@ -183,6 +193,11 @@ export class Effects {
       const r = this.rings[i];
       r.t += dt;
       if (r.t >= r.max) this.rings.splice(i, 1);
+    }
+    for (let i = this.texts.length - 1; i >= 0; i--) {
+      const t = this.texts[i];
+      t.t += dt;
+      if (t.t >= t.max) this.texts.splice(i, 1);
     }
     for (let i = this.confetti.length - 1; i >= 0; i--) {
       const c = this.confetti[i];
