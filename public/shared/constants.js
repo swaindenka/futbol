@@ -72,25 +72,26 @@ export const PU = {
   MAGNET: 6, // the ball sticks to your feet
   SHIELD: 7, // a barrier guards your goal against one shot
   GHOST: 8, // pass through players, immune to knock-backs
-  SHOCK: 9, // instant: blasts nearby opponents away and dazes them
+  SHOCK: 9, // next kick releases a shock wave: nearby opponents are blasted away and dazed
   MYSTERY: 10, // surprise box: usually a power-up, sometimes a curse
   // Curses: only from the surprise box, never spawned on their own.
   DIZZY: 11, // controls reversed
   SLIPPY: 12, // feet slide like on ice
 };
 
-// kind: 'self' (personal buff), 'team', 'foe' (hits the other team), 'ball', 'instant', 'box', 'curse'.
+// kind: 'self' (personal buff), 'charge' (held until the next kick, stacks with a buff),
+// 'team', 'foe' (hits the other team), 'ball', 'box', 'curse'.
 // w: spawn weight (0 = never spawned directly), mw: weight inside the surprise box.
 export const PU_INFO = {
-  1: { id: 'fire', name: 'Ateş Topu', desc: 'Sonraki vuruşun alev alır, çarptığını savurur', color: '#ff7a1a', ticks: 480, kind: 'self', w: 12, mw: 3 },
-  2: { id: 'giant', name: 'Dev', desc: 'Kocaman ve ağır oldun, rakipleri itersin', color: '#a05cff', ticks: 480, kind: 'self', w: 9, mw: 2 },
-  3: { id: 'speed', name: 'Hız', desc: 'Rüzgar gibisin', color: '#ffd23f', ticks: 360, kind: 'self', w: 12, mw: 3 },
+  1: { id: 'fire', name: 'Ateş Topu', desc: 'Sonraki vuruşun alev alır, önündekini delip geçer', color: '#ff7a1a', ticks: 600, kind: 'charge', w: 12, mw: 3 },
+  2: { id: 'giant', name: 'Dev', desc: 'Kocaman, ağır ve güçlü oldun', color: '#a05cff', ticks: 540, kind: 'self', w: 9, mw: 2 },
+  3: { id: 'speed', name: 'Hız', desc: 'Rüzgar gibisin', color: '#ffd23f', ticks: 480, kind: 'self', w: 11, mw: 3 },
   4: { id: 'ice', name: 'Buz', desc: 'Rakipler yavaşladı', color: '#5fd4ff', ticks: 240, kind: 'foe', w: 9, mw: 2 },
-  5: { id: 'rubber', name: 'Lastik Top', desc: 'Top deli gibi seker', color: '#ff4fa3', ticks: 600, kind: 'ball', w: 7, mw: 1 },
-  6: { id: 'magnet', name: 'Mıknatıs', desc: 'Top ayağına yapışır', color: '#ff3b4e', ticks: 420, kind: 'self', w: 10, mw: 2 },
-  7: { id: 'shield', name: 'Kalkan', desc: 'Kalen bir şuta karşı korunur', color: '#2ee59d', ticks: 720, kind: 'team', w: 7, mw: 2 },
-  8: { id: 'ghost', name: 'Hayalet', desc: 'Oyuncuların içinden geçersin', color: '#8b9bb4', ticks: 360, kind: 'self', w: 8, mw: 2 },
-  9: { id: 'shock', name: 'Şok Dalgası', desc: 'Yakındaki rakipler savruldu', color: '#3d6bff', ticks: 0, kind: 'instant', w: 10, mw: 2 },
+  5: { id: 'rubber', name: 'Lastik Top', desc: 'Top sizin: bantlardan seker, rakip ayağında tutamaz', color: '#ff4fa3', ticks: 600, kind: 'ball', w: 7, mw: 1 },
+  6: { id: 'magnet', name: 'Mıknatıs', desc: 'Top ayağına yapışır', color: '#ff3b4e', ticks: 540, kind: 'self', w: 10, mw: 2 },
+  7: { id: 'shield', name: 'Kalkan', desc: 'Kalen bir şuta karşı korunur', color: '#2ee59d', ticks: 720, kind: 'team', w: 6, mw: 2 },
+  8: { id: 'ghost', name: 'Hayalet', desc: 'Topla birlikte rakiplerin içinden geçersin', color: '#8b9bb4', ticks: 420, kind: 'self', w: 8, mw: 2 },
+  9: { id: 'shock', name: 'Şok Vuruşu', desc: 'Sonraki vuruşun etrafa şok dalgası yayar', color: '#3d6bff', ticks: 600, kind: 'charge', w: 10, mw: 2 },
   10: { id: 'mystery', name: 'Sürpriz Kutu', desc: 'Şansını dene', color: '#f5c542', ticks: 0, kind: 'box', w: 10, mw: 0 },
   11: { id: 'dizzy', name: 'Ters Köşe', desc: 'Kontrollerin ters döndü', color: '#d17bff', ticks: 210, kind: 'curse', w: 0, mw: 3 },
   12: { id: 'slippy', name: 'Kaygan', desc: 'Ayakların kayıyor', color: '#5fe3cf', ticks: 270, kind: 'curse', w: 0, mw: 3 },
@@ -112,32 +113,37 @@ export function pickPowerUp(rand, key = 'w') {
 
 export const PU_TUNE = {
   PICK_R: 14, // pickup reach beyond the player's radius
+  WARN: 60, // a landing marker shows where a power-up appears this long before it can be taken
   LIFE: 600, // ticks a power-up stays on the pitch
   FIRST: 420, // first spawn after kickoff (normal rate)
   EVERY_MIN: 540,
   EVERY_MAX: 900,
   GIANT_SCALE: 1.55,
   GIANT_MASS: 2.4, // body mass vs a normal player (bumps and shoves)
+  GIANT_KICK: 1.2, // kick power
   SPEED_MUL: 1.4,
   SPEED_ACCEL: 1.35,
   SLOW_MUL: 0.55,
   FIRE_MUL: 1.6,
   FIRE_TICKS: 90,
   FIRE_FRICTION: 0.996,
-  FIRE_KNOCK: 4.5,
-  FIRE_STUN: 30, // a fireball hit dazes the player it hits
+  FIRE_KNOCK: 6,
+  FIRE_STUN: 36, // a fireball hit dazes the player it hits
+  FIRE_PIERCE: 0.82, // speed the fireball keeps after bursting through an opponent
   RUBBER_WALL_E: 0.98,
   RUBBER_PLAYER_E: 0.9,
   RUBBER_FRICTION: 0.994,
-  MAG_RANGE: 44, // magnet reach beyond contact distance
-  MAG_REL: 7.5, // only balls slower than this (relative) are caught
-  MAG_DAMP: 0.22, // relative velocity damping per tick
-  MAG_PULL: 0.42, // pull toward the feet
+  RUBBER_KICK: 1.15, // kick power of the team the rubber ball plays for
+  MAG_RANGE: 56, // magnet reach beyond contact distance
+  MAG_REL: 7, // only balls slower than this (relative) are caught: long passes yes, shots no
+  MAG_DAMP: 0.24, // relative velocity damping per tick
+  MAG_PULL: 0.5, // pull toward the feet
   MAG_ORBIT: 0.5, // how far around the body (radians) the pull aims toward the front
   SHIELD_E: 0.9,
-  SHOCK_R: 210,
-  SHOCK_KNOCK: 7.5,
-  SHOCK_STUN: 42,
+  SHOCK_R: 230,
+  SHOCK_KNOCK: 8.5,
+  SHOCK_STUN: 60,
+  GHOST_CARRY: 24, // a ball this close (beyond contact) to a ghost's feet slips through opponents
   STUN_DRAG: 0.9, // velocity kept per tick while dazed
   SLIP_ACCEL: 0.035,
   SLIP_DECEL: 0.985,

@@ -4,7 +4,7 @@
 //  - 'demo'     : bots only, used as the animated menu background
 
 import {
-  makeState, addPlayer, resetKickoff, step, findPlayer, radius,
+  makeState, addPlayer, resetKickoff, step, findPlayer, radius, ghostCarrier,
 } from '../../shared/physics.js';
 import { decodeSnapshot } from '../../shared/protocol.js';
 import { BotBrain } from '../../shared/bot.js';
@@ -28,9 +28,8 @@ const upper = (t) => String(t).toLocaleUpperCase('tr');
 // Kill-feed text for power-ups whose effect is not simply "X picked up Y".
 const PU_FEED = {
   ice: 'rakipleri yavaşlattı!',
-  rubber: 'topu lastik yaptı!',
+  rubber: 'topu lastik yaptı, top artık onların!',
   shield: 'kalesine kalkan kurdu!',
-  shock: 'şok dalgası patlattı!',
   dizzy: 'lanetlendi: Ters Köşe!',
   slippy: 'lanetlendi: Kaygan!',
 };
@@ -53,7 +52,7 @@ export class Session {
     this.kits = this.settings.kits.map((i) => KITS[i] || KITS[0]);
     this.meta = new Map();
     this.fx = new Effects();
-    this.fx.quality = app.prefs.quality;
+    this.fx.quality = app.quality();
     this.brains = new Map();
     this.humans = new Set();
     this.stats = null;
@@ -345,12 +344,9 @@ export class Session {
           else audio.powerUp(e.k);
         }
         fx.burst(e.x, e.y, info.color);
-        if (e.k === PU.SHOCK) {
-          fx.ring(e.x, e.y, 'rgba(120,160,255,0.9)', 20, PU_TUNE.SHOCK_R, 0.55);
-          fx.ring(e.x, e.y, 'rgba(255,255,255,0.75)', 10, PU_TUNE.SHOCK_R * 0.7, 0.4);
-          fx.addShake(7);
-          if (audio) audio.boom();
-        }
+        const picker = findPlayer(this.state, e.p);
+        const at = picker || e;
+        fx.floatText(at.x, at.y, curse ? upper(info.name) : `+${upper(info.name)}`, info.color, true);
         if (hud) {
           const mine = e.p === this.myId;
           const who = mine ? 'Sen' : this.name(e.p);
@@ -361,8 +357,29 @@ export class Session {
           const foe = me && pl && pl.team !== me.team;
           if (mine) hud.popText(curse ? `LANET: ${upper(info.name)}` : upper(info.name), info.color);
           else if (foe && e.k === PU.ICE) hud.popText('YAVAŞLADIN!', info.color);
-          else if (foe && e.k === PU.SHOCK && me.st > 0) hud.popText('SERSEMLEDİN!', info.color);
         }
+        break;
+      }
+      case 'shock': {
+        // A shock kick went off: blue blast rings, dazed opponents get stars.
+        fx.ring(e.x, e.y, 'rgba(120,160,255,0.9)', 20, PU_TUNE.SHOCK_R, 0.55);
+        fx.ring(e.x, e.y, 'rgba(255,255,255,0.75)', 10, PU_TUNE.SHOCK_R * 0.7, 0.4);
+        fx.burst(e.x, e.y, PU_INFO[PU.SHOCK].color);
+        fx.addShake(7);
+        if (audio) {
+          audio.boom();
+          audio.zap();
+        }
+        const shooter = findPlayer(this.state, e.p);
+        const me = this.myPlayer();
+        for (const q of this.state.players) {
+          if (!shooter || q.team === shooter.team || q.st <= 0) continue;
+          if (Math.hypot(q.x - e.x, q.y - e.y) > PU_TUNE.SHOCK_R + 120) continue;
+          fx.stars(q.x, q.y);
+          fx.floatText(q.x, q.y, 'SERSEM!', '#ffe14d');
+          if (hud && me && q.id === me.id) hud.popText('SERSEMLEDİN!', PU_INFO[PU.SHOCK].color);
+        }
+        if (hud && e.n > 0) hud.feed(`${e.p === this.myId ? 'Sen' : this.name(e.p)}: şok vuruşu, ${e.n} rakip savruldu!`, 'info', PU_INFO[PU.SHOCK].color);
         break;
       }
       case 'blast': {
@@ -371,6 +388,7 @@ export class Session {
         if (v) {
           fx.burst(v.x, v.y, 'rgba(255,150,40,0.9)');
           fx.stars(v.x, v.y);
+          fx.floatText(v.x, v.y, 'YANDI!', PU_INFO[PU.FIRE].color);
         }
         fx.addShake(5);
         if (hud && e.p === this.myId) hud.popText('SERSEMLEDİN!', PU_INFO[PU.FIRE].color);
@@ -384,6 +402,7 @@ export class Session {
         fx.burst(x, e.y, kit.primary);
         fx.sparks(x, e.y, 24);
         fx.addShake(5);
+        fx.floatText(x - Math.sign(x) * 30, e.y, 'KALKAN!', PU_INFO[PU.SHIELD].color, true);
         if (hud) {
           hud.popText('KALKAN!', PU_INFO[PU.SHIELD].color);
           hud.feed(`${kit.name} kalkanı şutu durdurdu!`, 'info', PU_INFO[PU.SHIELD].color);
@@ -392,7 +411,10 @@ export class Session {
       }
       case 'save': {
         const v = findPlayer(this.state, e.p);
-        if (v) fx.ring(v.x, v.y, 'rgba(255,255,255,0.85)', 14, 46, 0.4);
+        if (v) {
+          fx.ring(v.x, v.y, 'rgba(255,255,255,0.85)', 14, 46, 0.4);
+          fx.floatText(v.x, v.y, 'KURTARIŞ!', '#ffffff', e.v >= 6.5);
+        }
         if (audio) audio.crowdOoh();
         if (hud) {
           if (e.v >= 6.5) hud.popText(e.p === this.myId ? 'SÜPER KURTARIŞ!' : 'KURTARIŞ!');
@@ -403,6 +425,11 @@ export class Session {
       case 'tap':
         if (audio) audio.touch(e.v);
         break;
+      case 'tackle': {
+        const v = findPlayer(this.state, e.p);
+        if (v && this.mode !== 'demo') fx.floatText(v.x, v.y, 'KAPTI!', '#cfe8ff');
+        break;
+      }
       case 'wall': {
         if (audio) {
           if (b.rub > 0) audio.boing(e.v);
@@ -561,7 +588,7 @@ export class Session {
       const r = cur + (target - cur) * 0.18;
       this.rad.set(p.id, r);
       return this.buildPlayerView(p.id, p.team, pos.x, pos.y, p.facing, p.vx, p.vy, {
-        ct: p.ct, r, eff: p.eff, et: p.et, sl: p.sl, st: p.st, db: p.db, dt: p.dt,
+        ct: p.ct, r, eff: p.eff, et: p.et, sl: p.sl, st: p.st, db: p.db, dt: p.dt, fb: p.fb, cg: p.cg,
       });
     });
     const b = s.ball;
@@ -570,10 +597,14 @@ export class Session {
       x: lerp(pb.x, b.x, alpha) + this.ballOff.x,
       y: lerp(pb.y, b.y, alpha) + this.ballOff.y,
       z: 0,
+      vx: b.vx,
+      vy: b.vy,
       speed: Math.hypot(b.vx, b.vy),
       fire: b.fire,
       rub: b.rub,
+      rt: b.rt,
       at: b.at,
+      ghost: !!ghostCarrier(s),
     };
     return {
       field: s.field, kits: this.kits, phase: s.phase, ko: s.ko, players, ball, pu: s.pu, sh: s.sh,
@@ -646,7 +677,12 @@ export class Session {
     // Fire: the ball on fire leaves flames, a player holding a fireball smoulders.
     if (this.state.ball.fire > 0) for (let i = 0; i < 2; i++) this.fx.flame(this.state.ball.x, this.state.ball.y, 6);
     for (const p of this.state.players) {
-      if (p.eff === PU.FIRE && Math.random() < 0.35) this.fx.flame(p.x, p.y, 10);
+      if (p.fb > 0 && p.cg === PU.FIRE && Math.random() < 0.35) this.fx.flame(p.x, p.y, 10);
+      if (p.fb > 0 && p.cg === PU.SHOCK && Math.random() < 0.08) this.fx.sparks(p.x, p.y, 14);
+      // A giant on the move kicks up dust, a dazed or sliding player too.
+      const sp = Math.hypot(p.vx, p.vy);
+      if (p.eff === PU.GIANT && sp > 1.5 && Math.random() < 0.12) this.fx.dust(p.x, p.y, Math.atan2(p.vy, p.vx));
+      if (p.db === PU.SLIPPY && sp > 1.2 && Math.random() < 0.1) this.fx.dust(p.x, p.y, Math.atan2(p.vy, p.vx));
     }
     this.fx.update(dt);
 

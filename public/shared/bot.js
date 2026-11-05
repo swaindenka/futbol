@@ -4,9 +4,11 @@
 // with the target (goal, open teammate or a clearance direction).
 
 import {
-  P, B, AT, BTN, PHASE, PU, PU_INFO,
+  P, B, AT, BTN, PHASE, PU, PU_INFO, PU_TUNE,
 } from './constants.js';
-import { teamPlayers, findPlayer, formationSpot, PHYS } from './physics.js';
+import {
+  teamPlayers, findPlayer, formationSpot, radius, PHYS,
+} from './physics.js';
 import { clamp, distToSegment, angleDiff, lerp } from './util.js';
 
 // confuse: ticks a reversed-controls curse fools the bot before it adapts.
@@ -20,6 +22,9 @@ const LEVELS = [
 export const BOT_LEVEL_NAMES = LEVELS.map((l) => l.name);
 
 const CONTACT = PHYS.CONTACT;
+// A teammate holding an attacking power-up should be the one going for the ball.
+const ATTACK_BUFFS = new Set([PU.SPEED, PU.GHOST, PU.MAGNET, PU.GIANT]);
+const buffed = (m) => m.fb > 0 || ATTACK_BUFFS.has(m.eff);
 // Last chaser per team, per match state, so teammates do not keep swapping the role.
 const chasers = new WeakMap();
 const REACH = PHYS.REACH;
@@ -44,6 +49,7 @@ export class BotBrain {
     this.sx = null;
     this.sy = 0;
     this.aim = null; // intended direction of the last shot (for aftertouch)
+    this.carrying = false; // magnet: running with the ball glued in front
   }
 
   /**
@@ -147,6 +153,7 @@ export class BotBrain {
       let d = Math.hypot(b.x - m.x, b.y - m.y);
       if ((b.x - m.x) * dir > 0) d -= 25; // goal-side of the ball is better
       if (humans && humans.has(m.id)) d -= 45;
+      if (buffed(m)) d -= 70;
       if (m.id === memo[me.team]) d -= 40; // keep the current chaser unless clearly worse
       if (d < best) {
         best = d;
@@ -232,8 +239,34 @@ export class BotBrain {
     return { x: px, y: py };
   }
 
+  /**
+   * Magnet: the ball stays glued in front of us, so just run where we want it to go and
+   * kick once the ball sits on that line. Returns false when the ball is not under the magnet.
+   */
+  carry(s, me, o, ang, shoot, tol) {
+    const b = s.ball;
+    const bd = Math.hypot(b.x - me.x, b.y - me.y);
+    // Hysteresis: start carrying well inside the magnet's reach, stop only at its edge, so the
+    // bot does not flip between carrying and looping around the ball.
+    const reach = radius(me) + B.R + PU_TUNE.MAG_RANGE * (this.carrying ? 1 : 0.6);
+    this.carrying = me.eff === PU.MAGNET && bd <= reach;
+    if (!this.carrying) return false;
+    const f = s.field;
+    const tx = clamp(me.x + Math.cos(ang) * 90, -f.hw + 30, f.hw - 30);
+    const ty = clamp(me.y + Math.sin(ang) * 90, -f.hh + 30, f.hh - 30);
+    this.moveTo(o, me, tx, ty);
+    if (!shoot || this.hold || this.rest || bd > REACH + 2) return true;
+    const diff = Math.abs(angleDiff(Math.atan2(b.y - me.y, b.x - me.x), ang));
+    if (diff < tol) {
+      this.hold = 6;
+      this.aim = ang - this.err;
+    }
+    return true;
+  }
+
   /** Steer behind the ball relative to `ang` and kick when lined up (if `shoot`). */
-  strike(s, me, o, ang, shoot) {
+  strike(s, me, o, ang, shoot, tol = this.cfg.tol) {
+    if (this.carry(s, me, o, ang, shoot, tol)) return;
     const ip = this.intercept(s, me);
     const ax = Math.cos(ang);
     const ay = Math.sin(ang);
@@ -301,7 +334,7 @@ export class BotBrain {
     // Ball on the boards / in a corner: accept any kick that still goes our way.
     const onBoards = Math.abs(b.y) > f.hh - 30 || Math.abs(b.x) > f.hw - 30;
     const ourWay = kx * Math.cos(ang) > 0;
-    if ((shoot && diff < this.cfg.tol) || ((onBoards || dig) && diff < 1.3 && ourWay)) {
+    if ((shoot && diff < tol) || ((onBoards || dig) && diff < 1.3 && ourWay)) {
       this.hold = 6;
       this.aim = shoot ? ang - this.err : null;
     }
@@ -345,10 +378,10 @@ export class BotBrain {
     const { f, b, goalX, opps } = ctx;
     const dGoal = Math.hypot(goalX - b.x, b.y);
     const shot = this.shotAngle(s, ctx);
-    // A fireball goes through anything: shoot from further out and through traffic.
-    const fire = me.eff === PU.FIRE;
-    const inRange = dGoal < this.cfg.range * f.w * (fire ? 1.35 : 1);
-    if (inRange && (shot.clear > (fire ? -12 : 0) || dGoal < f.w * 0.15)) {
+    // A fireball bursts through the first defender: shoot from further out and through traffic.
+    const fire = me.fb > 0 && me.cg === PU.FIRE;
+    const inRange = dGoal < this.cfg.range * f.w * (fire ? 1.25 : 1);
+    if (inRange && (shot.clear > (fire ? -30 : 0) || dGoal < f.w * 0.15)) {
       this.strike(s, me, o, shot.ang, true);
       return;
     }
@@ -356,7 +389,12 @@ export class BotBrain {
     // ghost the ball is safe at our feet, so keep dribbling instead.
     let pressure = Infinity;
     for (const q of opps) pressure = Math.min(pressure, Math.hypot(q.x - b.x, q.y - b.y));
-    const keep = me.eff === PU.GHOST || me.eff === PU.MAGNET;
+    // Shock charge: kick it the moment opponents crowd us, the blast clears them away.
+    if (me.fb > 0 && me.cg === PU.SHOCK && pressure < 110) {
+      this.strike(s, me, o, Math.atan2(-b.y * 0.4, goalX - b.x), true, 1.1);
+      return;
+    }
+    const keep = fire || me.eff === PU.GHOST || me.eff === PU.MAGNET;
     if (pressure < 80 && !keep) {
       const mate = this.openMate(s, me, ctx);
       if (mate) {

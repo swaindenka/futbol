@@ -33,6 +33,10 @@ export class Renderer {
     this.lastBall = null;
     this.trail = [];
     this.labelCache = new Map();
+    this.alphas = new Map(); // eased per-player opacity (ghost fade in / out)
+    this.iconCache = new Map();
+    this.curve = 0; // eased curvature of the ball's path (aftertouch trail tint)
+    this.lastBallAng = null;
     this.ledMessages = ['FUTBOL ARENA', 'GERÇEK ZAMANLI 4v4', 'PAS VER, ŞUTU ÇEK', 'FAIR PLAY'];
     this.minimap = null;
   }
@@ -123,7 +127,11 @@ export class Renderer {
     this.drawGoal(f, 1, 'front', fx);
     this.drawRails(f, fx, 'near');
     this.drawParticles(fx);
-    if (opts.showNames !== false) this.drawLabels(view);
+    if (opts.showNames !== false) {
+      this.drawLabels(view);
+      this.drawFloatTexts(fx);
+      if (cam.mode === 'follow') this.drawPowerUpIndicators(view);
+    }
     this.drawBallIndicator(view);
     this.drawScreenFx(fx, view, opts);
   }
@@ -183,15 +191,52 @@ export class Renderer {
     // Power-up spots on the ground
     for (const u of view.pu || []) {
       const info = PU_INFO[u.k];
+      if (!info) continue;
+      const color = this.puColor(u);
+      if (u.t < 0) {
+        // Landing marker: a ring closes in on the spot while the badge drops in.
+        const k = 1 + u.t / PU_TUNE.WARN; // 0 -> 1
+        const r = 60 - k * 40;
+        ctx.strokeStyle = rgba(color, 0.25 + k * 0.6);
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.arc(u.x, u.y, r, this.time * 3, this.time * 3 + TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) {
+          const a = (i * Math.PI) / 2 + Math.PI / 4;
+          ctx.moveTo(u.x + Math.cos(a) * (r + 4), u.y + Math.sin(a) * (r + 4));
+          ctx.lineTo(u.x + Math.cos(a) * (r + 12), u.y + Math.sin(a) * (r + 12));
+        }
+        ctx.stroke();
+        ctx.fillStyle = rgba(color, 0.12 * k);
+        ctx.beginPath();
+        ctx.arc(u.x, u.y, r, 0, TAU);
+        ctx.fill();
+        continue;
+      }
       const pulse = 0.5 + 0.5 * Math.sin(this.time * 5 + u.id);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      const g = ctx.createRadialGradient(u.x, u.y, 2, u.x, u.y, 26);
+      g.addColorStop(0, rgba(color, 0.35));
+      g.addColorStop(1, rgba(color, 0));
+      ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(u.x, u.y, 10, 0, TAU);
+      ctx.arc(u.x, u.y, 26, 0, TAU);
       ctx.fill();
-      ctx.strokeStyle = rgba(info.color, 0.35 + pulse * 0.4);
-      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = rgba(color, 0.3 + pulse * 0.35);
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(u.x, u.y, 18 + pulse * 6, 0, TAU);
+      ctx.arc(u.x, u.y, 18 + pulse * 5, 0, TAU);
+      ctx.stroke();
+      // Remaining life: the ring empties until the badge vanishes.
+      const life = Math.max(0, 1 - u.t / PU_TUNE.LIFE);
+      ctx.strokeStyle = rgba('#ffffff', life < 0.2 ? 0.9 : 0.6);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(u.x, u.y, 14, -Math.PI / 2, -Math.PI / 2 + life * TAU);
       ctx.stroke();
     }
 
@@ -270,7 +315,35 @@ export class Renderer {
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      if (p.eff) {
+      if (p.eff === PU.SPEED) {
+        // Speed lines streaming off the back of the player.
+        const sp = Math.hypot(p.vx, p.vy);
+        if (sp > 1.5) {
+          const ux = p.vx / sp;
+          const uy = p.vy / sp;
+          ctx.lineCap = 'round';
+          for (let i = -1; i <= 1; i++) {
+            const ox = -uy * i * R * 0.6;
+            const oy = ux * i * R * 0.6;
+            const len = (14 + sp * 5) * (i ? 0.7 : 1) * (0.8 + 0.2 * Math.sin(this.time * 30 + i * 2));
+            const sx = p.x - ux * (R + 2) + ox;
+            const sy = p.y - uy * (R + 2) + oy;
+            const g = ctx.createLinearGradient(sx, sy, sx - ux * len, sy - uy * len);
+            g.addColorStop(0, 'rgba(255,215,80,0.75)');
+            g.addColorStop(1, 'rgba(255,215,80,0)');
+            ctx.strokeStyle = g;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx - ux * len, sy - uy * len);
+            ctx.stroke();
+          }
+          ctx.lineCap = 'butt';
+        }
+      }
+      // Ending soon: the aura blinks during the last 1.5 s.
+      const ending = (t) => t < 90 && Math.floor(this.time * 9) % 2 === 0;
+      if (p.eff && PU_INFO[p.eff] && !ending(p.et)) {
         const info = PU_INFO[p.eff];
         const pulse = 0.5 + 0.5 * Math.sin(this.time * 9);
         ctx.fillStyle = rgba(info.color, 0.12 + pulse * 0.1);
@@ -284,6 +357,21 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(p.x, p.y, R + 11, -Math.PI / 2, -Math.PI / 2 + left * TAU);
         ctx.stroke();
+      }
+      if (p.fb > 0 && PU_INFO[p.cg] && !ending(p.fb)) {
+        // Kick charge: a flickering ring (fire / electric), emptying as it runs out.
+        const left = Math.max(0, p.fb / PU_INFO[p.cg].ticks);
+        const rr = R + (p.eff ? 17 : 11);
+        const flick = Math.sin(this.time * 25);
+        ctx.strokeStyle = p.cg === PU.FIRE
+          ? `rgba(255,${120 + Math.floor(60 * flick)},30,0.9)`
+          : `rgba(${110 + Math.floor(80 * flick)},150,255,0.95)`;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rr, -Math.PI / 2 - this.time * 4, -Math.PI / 2 - this.time * 4 + left * TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
     }
 
@@ -657,8 +745,12 @@ export class Renderer {
     const rxt = rx * s;
     const ryt = ry * s;
     if (gx < -60 || gx > this.W + 60 || gy < -80 || gy > this.H + 60) return;
-    // Ghost: see-through, flickering body.
-    if (p.eff === PU.GHOST) ctx.globalAlpha = 0.38 + 0.12 * Math.sin(this.time * 11 + p.id);
+    // Ghost: fades to see-through and flickers; fades back in when it wears off.
+    const ta = p.eff === PU.GHOST ? 0.38 + 0.12 * Math.sin(this.time * 11 + p.id) : 1;
+    const ca = this.alphas.get(p.id) ?? ta;
+    const alpha = ca + (ta - ca) * 0.2;
+    this.alphas.set(p.id, alpha);
+    if (alpha < 0.995) ctx.globalAlpha = alpha;
 
     // Motion ghosts while sliding / sprinting fast
     const sp = Math.hypot(p.vx, p.vy);
@@ -818,10 +910,15 @@ export class Renderer {
     // Flicker during the last two seconds.
     if (ticks < 120 && Math.floor(this.time * 10) % 2 === 0) return;
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 5);
+    // Rise from the ground when it goes up.
+    const grow = Math.min(1, (info.ticks - ticks) / 20);
+    ctx.save();
+    ctx.globalAlpha = 0.3 + grow * 0.7;
+    const top = f.bar * Math.min(1, (info.ticks - ticks) / 20);
     const a = pr(-f.gh, 0);
     const b = pr(f.gh, 0);
-    const c = pr(f.gh, f.bar);
-    const d = pr(-f.gh, f.bar);
+    const c = pr(f.gh, top);
+    const d = pr(-f.gh, top);
     const g = ctx.createLinearGradient(a[0], a[1], d[0], d[1]);
     g.addColorStop(0, rgba(kit.primary, 0.42 + pulse * 0.12));
     g.addColorStop(1, rgba(info.color, 0.12 + pulse * 0.08));
@@ -833,7 +930,7 @@ export class Renderer {
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 0; i < 4; i++) {
-      const z = ((this.time * 30 + (i * f.bar) / 4) % f.bar);
+      const z = (this.time * 30 + (i * top) / 4) % Math.max(1, top);
       const p0 = pr(-f.gh, z);
       const p1 = pr(f.gh, z);
       ctx.moveTo(p0[0], p0[1]);
@@ -844,6 +941,7 @@ export class Renderer {
     ctx.lineWidth = 2;
     this.quad([a, b, c, d]);
     ctx.stroke();
+    ctx.restore();
   }
 
   drawBall(b, view) {
@@ -861,6 +959,15 @@ export class Renderer {
     this.lastBall = { x: b.x, y: b.y };
 
     const speed = b.speed || 0;
+    // How hard the ball is curving (aftertouch), eased so the trail tint fades smoothly.
+    let bend = 0;
+    if (b.vx !== undefined && speed > 3) {
+      const ang = Math.atan2(b.vy, b.vx);
+      if (this.lastBallAng !== null) bend = Math.abs(Math.atan2(Math.sin(ang - this.lastBallAng), Math.cos(ang - this.lastBallAng)));
+      this.lastBallAng = ang;
+    } else this.lastBallAng = null;
+    const curving = b.at > 0 && bend > 0.002 && bend < 0.05 ? 1 : 0;
+    this.curve += (curving - this.curve) * 0.15;
     const tr = this.trail;
     if (speed > 5.5) {
       tr.push({ x: b.x, y: b.y, z: b.z });
@@ -877,7 +984,10 @@ export class Renderer {
         const t = i / tr.length;
         const [ax, ay] = cam.project(tr[i - 1].x, tr[i - 1].y, tr[i - 1].z + B.R);
         const [bx, by] = cam.project(tr[i].x, tr[i].y, tr[i].z + B.R);
-        ctx.strokeStyle = hot ? `rgba(255,${150 + t * 80},60,${0.5 * t})` : `rgba(255,255,255,${0.3 * t})`;
+        const c = this.curve;
+        ctx.strokeStyle = hot
+          ? `rgba(255,${150 + t * 80},60,${0.5 * t})`
+          : `rgba(${Math.round(255 - c * 140)},${Math.round(255 - c * 25)},255,${(0.3 + c * 0.25) * t})`;
         ctx.lineWidth = r * 1.7 * t;
         ctx.beginPath();
         ctx.moveTo(ax, ay);
@@ -929,23 +1039,61 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(cx, cy, r + 3 + pulse * 2, 0, TAU);
       ctx.stroke();
+      // Inner ring in the colour of the team the rubber ball plays for.
+      if (b.rt >= 0 && view.kits) {
+        ctx.strokeStyle = rgba(view.kits[b.rt].primary, 0.9);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 1.2, 0, TAU);
+        ctx.stroke();
+      }
     }
-    void view;
+    if (b.ghost) {
+      // Carried by a ghost: the ball shimmers too.
+      ctx.fillStyle = `rgba(200,210,235,${0.25 + 0.15 * Math.sin(this.time * 11)})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 4, 0, TAU);
+      ctx.fill();
+    }
   }
 
   /** Floating power-up badge. */
+  puColor(u) {
+    return u.k === PU.MYSTERY ? hslHex((this.time * 140 + u.id * 40) % 360, 0.85, 0.58) : PU_INFO[u.k].color;
+  }
+
   drawPowerUp(u) {
     const { ctx, cam } = this;
     const info = PU_INFO[u.k];
     if (!info) return;
-    const color = u.k === PU.MYSTERY ? hslHex((this.time * 140 + u.id * 40) % 360, 0.85, 0.58) : info.color;
+    const color = this.puColor(u);
     const bob = Math.sin(this.time * 3 + u.id) * 3;
-    const [x, y, s] = cam.project(u.x, u.y, 20 + bob);
+    // While landing, the badge drops in from above.
+    const land = u.t < 0 ? -u.t / PU_TUNE.WARN : 0;
+    const [x, y, s] = cam.project(u.x, u.y, 20 + bob + land * land * 160);
     const r = 12 * cam.zoom * s;
     // Blink during the last two seconds
     if (u.t > PU_TUNE.LIFE - 120 && Math.floor(this.time * 8) % 2 === 0) return;
-    const pop = Math.min(1, u.t / 12);
+    // Light beam from the ground up through the badge.
+    if (this.quality !== 'low') {
+      const [gx, gy] = cam.project(u.x, u.y, 0);
+      const [bx, by] = cam.project(u.x, u.y, 95);
+      const w = 7 * cam.zoom;
+      const g = ctx.createLinearGradient(gx, gy, bx, by);
+      g.addColorStop(0, rgba(color, 0.32 * (1 - land)));
+      g.addColorStop(1, rgba(color, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(gx - w, gy);
+      ctx.lineTo(gx + w, gy);
+      ctx.lineTo(bx + w * 0.4, by);
+      ctx.lineTo(bx - w * 0.4, by);
+      ctx.closePath();
+      ctx.fill();
+    }
+    const pop = u.t < 0 ? 0.75 : Math.min(1, 0.75 + u.t / 40);
     ctx.save();
+    if (land > 0) ctx.globalAlpha = 1 - land * 0.6;
     ctx.translate(x, y);
     ctx.scale(pop, pop);
     const glow = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 2.4);
@@ -1230,6 +1378,98 @@ export class Renderer {
     }
   }
 
+  /** Floating labels (+HIZ, SERSEM!, KURTARIŞ!) rising from the pitch. */
+  drawFloatTexts(fx) {
+    const { ctx, cam } = this;
+    if (!fx.texts.length) return;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const t of fx.texts) {
+      const k = t.t / t.max;
+      const [x, y] = cam.project(t.x, t.y, 34 + k * 46);
+      const pop = k < 0.12 ? 0.6 + (k / 0.12) * 0.55 : k < 0.2 ? 1.15 - ((k - 0.12) / 0.08) * 0.15 : 1;
+      const size = (t.big ? 17 : 13) * pop;
+      ctx.globalAlpha = k > 0.7 ? Math.max(0, 1 - (k - 0.7) / 0.3) : 1;
+      ctx.font = `${Math.round(size)}px "Russo One", system-ui, sans-serif`;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+      ctx.strokeText(t.text, x, y);
+      ctx.fillStyle = t.color;
+      ctx.fillText(t.text, x, y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Follow camera: small coloured arrows at the screen edge point to power-ups out of view. */
+  drawPowerUpIndicators(view) {
+    const { ctx, cam } = this;
+    const m = 26;
+    for (const u of view.pu || []) {
+      if (!PU_INFO[u.k]) continue;
+      const [x, y] = cam.project(u.x, u.y, 20);
+      if (x >= m && x <= this.W - m && y >= m + 40 && y <= this.H - m) continue;
+      const cx = Math.max(m, Math.min(this.W - m, x));
+      const cy = Math.max(m + 70, Math.min(this.H - m, y));
+      const a = Math.atan2(y - cy, x - cx);
+      const color = this.puColor(u);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.globalAlpha = u.t < 0 ? 0.55 : 0.9;
+      ctx.fillStyle = 'rgba(6,10,18,0.7)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      this.puIcon(u.k, 6);
+      ctx.rotate(a);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(19, 0);
+      ctx.lineTo(13, -5);
+      ctx.lineTo(13, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /** A power-up badge as an image (data URL) for the HUD chips; cached per kind. */
+  iconURL(k) {
+    let url = this.iconCache.get(k);
+    if (url) return url;
+    const info = PU_INFO[k];
+    if (!info) return '';
+    const c = document.createElement('canvas');
+    c.width = c.height = 48;
+    const saved = this.ctx;
+    const g = c.getContext('2d');
+    this.ctx = g;
+    try {
+      g.translate(24, 24);
+      const r = 21;
+      const grad = g.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
+      grad.addColorStop(0, shade(info.color, 0.45));
+      grad.addColorStop(1, shade(info.color, -0.3));
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(0, 0, r, 0, TAU);
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.9)';
+      g.lineWidth = 2.5;
+      g.stroke();
+      this.puIcon(k, r * 0.6);
+      url = c.toDataURL();
+    } catch {
+      url = '';
+    } finally {
+      this.ctx = saved;
+    }
+    this.iconCache.set(k, url);
+    return url;
+  }
+
   drawBallIndicator(view) {
     const { ctx, cam } = this;
     const b = view.ball;
@@ -1347,6 +1587,30 @@ export class Renderer {
     const br = cam.unproject(this.W, this.H);
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.strokeRect(X(tl.x), Y(tl.y), (br.x - tl.x) * sx, (br.y - tl.y) * sy);
+    if (view.sh) {
+      for (let t = 0; t < 2; t++) {
+        if (!(view.sh[t] > 0)) continue;
+        const gx = X((t === 0 ? -1 : 1) * f.hw);
+        ctx.strokeStyle = PU_INFO[PU.SHIELD].color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(gx, Y(-f.gh));
+        ctx.lineTo(gx, Y(f.gh));
+        ctx.stroke();
+      }
+    }
+    for (const u of view.pu || []) {
+      if (!PU_INFO[u.k]) continue;
+      ctx.fillStyle = this.puColor(u);
+      ctx.globalAlpha = u.t < 0 ? 0.5 : 1;
+      ctx.beginPath();
+      ctx.arc(X(u.x), Y(u.y), 3, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     for (const p of view.players) {
       ctx.fillStyle = view.kits[p.team].primary;
       ctx.beginPath();

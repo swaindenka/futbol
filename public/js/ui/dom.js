@@ -13,7 +13,13 @@ export function el(tag, attrs = {}, ...children) {
     if (k === 'class') n.className = v;
     else if (k === 'html') n.innerHTML = v;
     else if (k === 'text') n.textContent = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(n.style, v);
+    else if (k === 'style' && typeof v === 'object') {
+      // CSS custom properties (--x) only work through setProperty, not as style fields.
+      for (const [sk, sv] of Object.entries(v)) {
+        if (sk.startsWith('--')) n.style.setProperty(sk, sv);
+        else n.style[sk] = sv;
+      }
+    }
     else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
     else if (k === 'dataset') Object.assign(n.dataset, v);
     else n.setAttribute(k, v === true ? '' : v);

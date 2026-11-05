@@ -68,6 +68,11 @@ export class Camera {
       tz = Math.max(fit * 1.05, clamp(Math.min(this.W, this.H * 1.7) / 980, 0.72, 1.45)) * zoomBoost;
       let fx = focus ? focus.x * 0.62 + ball.x * 0.38 : ball.x;
       let fy = focus ? focus.y * 0.62 + ball.y * 0.38 : ball.y;
+      if (focus && Number.isFinite(focus.vx)) {
+        // Look a little ahead of where the player is running, so you see what is coming.
+        fx += clamp(focus.vx * 16, -70, 70);
+        fy += clamp(focus.vy * 12, -45, 45);
+      }
       if (shift && focus) {
         // Push the view so the player sits left of / above the on-screen buttons.
         fx += shift.x / tz;

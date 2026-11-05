@@ -9,7 +9,7 @@ export const DEFAULT_PREFS = {
   muted: false,
   camera: 'auto',
   tilt: 0.74,
-  quality: 'high',
+  quality: 'auto', // 'auto' steps down by itself when the frame rate drops
   replays: true,
   hintsSeen: false,
   curveHintSeen: false, // added with aftertouch: players who saw the first hints still get this one
@@ -25,6 +25,8 @@ export function loadPrefs() {
     stored = {};
   }
   const p = { ...DEFAULT_PREFS, ...stored };
+  // Older versions stored 'high' as the default: players who never picked a quality get 'auto'.
+  if (!stored.qualitySet && stored.quality === 'high') p.quality = 'auto';
   if (!p.name) p.name = `Oyuncu${Math.floor(100 + Math.random() * 900)}`;
   return p;
 }

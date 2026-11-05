@@ -18,13 +18,13 @@ export function encodeSnapshot(s, events) {
     s.ko,
     s.ot,
     s.kt,
-    [r2(b.x), r2(b.y), r3(b.vx), r3(b.vy), b.owner, b.last, b.prev, b.lt, b.fire, b.rub, b.at, b.ak],
+    [r2(b.x), r2(b.y), r3(b.vx), r3(b.vy), b.owner, b.last, b.prev, b.lt, b.fire, b.rub, b.at, b.ak, b.rt],
     s.players.map((p) => [
       p.id, p.team, p.slot,
       r2(p.x), r2(p.y), r3(p.vx), r3(p.vy), r3(p.facing),
       p.ct, p.pb, p.kcd,
       r2(p.in.mx), r2(p.in.my), r3(p.in.a), p.in.b,
-      p.eff, p.et, p.sl, p.st, p.db, p.dt,
+      p.eff, p.et, p.sl, p.st, p.db, p.dt, p.fb, p.cg,
     ]),
     events || [],
     s.pu.map((u) => [u.id, u.k, u.x, u.y, u.t, u.m || 0]),
@@ -55,6 +55,7 @@ export function decodeSnapshot(d, base) {
   ball.rub = bd[9] || 0;
   ball.at = bd[10] || 0;
   ball.ak = bd[11] ?? -1;
+  ball.rt = bd[12] ?? -1;
   const players = d[10].map((a) => ({
     id: a[0],
     team: a[1],
@@ -74,6 +75,8 @@ export function decodeSnapshot(d, base) {
     st: a[18] || 0,
     db: a[19] || 0,
     dt: a[20] || 0,
+    fb: a[21] || 0,
+    cg: a[22] || 0,
   }));
   return {
     tick: d[0],

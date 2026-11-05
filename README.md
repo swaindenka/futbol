@@ -16,18 +16,25 @@ oyuncular forma desenli pullar olarak görünür.
 - Saha kenarları banttır, top duvarlardan seker; köşeler bilardo masası gibi yuvarlatılmıştır, top köşede sıkışmaz
 - Karşılıklı aynı anda vuruşta top bloke olur, asla oyuncunun içinden geçmez
 - Her golden sonra kısa kutlama ve **3-2-1 geri sayım**; antrenmanda menü açıkken oyun duraklar
-- **Rastgele güçlendirmeler** (oda ayarında sıklık: Kapalı / Az / Normal / **Kaos**): maç sırasında sahada rozetler belirir, üstünden geçen kapar
-  - 🔥 **Ateş Topu**: sonraki vuruş alevli ve çok sert, çarptığı oyuncuyu savurup kısa süre sersemletir
-  - 🍄 **Dev**: 8 saniye 1.5 kat büyük ve ağır gövde, rakipleri iterek yol açar
-  - ⚡ **Hız**: 6 saniye %40 daha hızlı ve daha çabuk ivmelenme
-  - 🧲 **Mıknatıs**: 7 saniye top ayağa yapışır, yakındaki yavaş topu çeker ve gövdenin önüne döndürür (sert şutları tutmaz)
-  - 👻 **Hayalet**: 6 saniye oyuncuların içinden geçersin; şok dalgası ve ateş topu işlemez
-  - 🛡️ **Kalkan**: kalenin önüne enerji perdesi kurulur, ilk şutu geri çevirip kırılır (12 saniye)
-  - ❄️ **Buz**: rakip takımın tamamı 4 saniye yavaşlar
-  - 💥 **Şok Dalgası**: anında patlar, yakındaki rakipleri savurur ve sersemletir
-  - 🎾 **Lastik Top**: top 10 saniye bantlardan ve oyunculardan hız kaybetmeden seker
-  - ❓ **Sürpriz Kutu**: içinden rastgele bir güçlendirme çıkar… ya da bir lanet: **Ters Köşe** (kontroller ters) veya **Kaygan** (ayaklar buzda gibi kayar)
-- Botlar güçlendirmeleri bilerek kullanır: ateş topuyla uzaktan vurur, mıknatıs/hayaletle pas yerine top sürer, ters kontrole bir süre sonra alışır
+- **Rastgele güçlendirmeler** (oda ayarında sıklık: Kapalı / Az / Normal / **Kaos**): maç sırasında sahada rozetler belirir, üstünden geçen kapar. Rozetin yeri 1 saniye önceden halka ile işaretlenir, ömrü rozetin altındaki halkadan görünür
+
+  | | Güçlendirme | Süre | Etki |
+  | --- | --- | --- | --- |
+  | 🔥 | **Ateş Topu** | şarj, 10 sn | Sonraki vuruş alevli ve çok sert; önündeki ilk rakibi delip geçer, onu savurup sersemletir |
+  | 💥 | **Şok Vuruşu** | şarj, 10 sn | Sonraki vuruşta etrafa şok dalgası: yakındaki rakipler savrulur ve 1 sn sersemler |
+  | 🍄 | **Dev** | 9 sn | 1.55 kat büyük, ağır gövde; rakipleri iter, vuruşlar %20 sert |
+  | ⚡ | **Hız** | 8 sn | %40 daha hızlı, daha çabuk ivmelenme |
+  | 🧲 | **Mıknatıs** | 9 sn | Top ayağa yapışır ve önüne döner; yakındaki yavaş topu ve uzun pasları çeker (şutları tutmaz) |
+  | 👻 | **Hayalet** | 7 sn | Oyuncuların içinden geçersin; ayağındaki top da rakiplere çarpmaz, ancak vurarak alınabilir |
+  | 🛡️ | **Kalkan** | 12 sn | Kalenin önüne enerji perdesi: ilk şutu geri çevirip kırılır |
+  | ❄️ | **Buz** | 4 sn | Rakip takımın tamamı %45 yavaşlar |
+  | 🎾 | **Lastik Top** | 10 sn | Top kapan takımın: bantlardan hız kaybetmeden seker, sizin vuruşlarınız %15 sert, rakip topu ayağında tutamaz |
+  | ❓ | **Sürpriz Kutu** | – | İçinden rastgele bir güçlendirme ya da (~%25) bir lanet çıkar |
+  | 🌀 | *Ters Köşe* (lanet) | 3.5 sn | Kontroller ters döner |
+  | 🧊 | *Kaygan* (lanet) | 4.5 sn | Ayaklar buzda gibi kayar |
+
+  Ateş ve Şok vuruş şarjıdır: diğer güçlendirmelerle birlikte taşınır, biri diğerinin yerini alır. Süreler ve güçler, botlarla binlerce eşleştirilmiş simülasyonla (güçlendirmeli / güçlendirmesiz aynı an) dengelendi
+- Botlar güçlendirmeleri bilerek kullanır: güçlendirmesi olan bot topa gider, ateş topuyla uzaktan ve defansın içinden vurur, şok vuruşunu kalabalıkta patlatır, mıknatısla topu doğrudan kaleye taşır, hayaletle pas yerine top sürer, ters kontrole bir süre sonra alışır
 - **Kurtarış** (kaleye giden şutu gövdeyle kesmek) ve **top kapma** (rakibin ayağındaki topu çalmak) ayrı istatistik, oyuncu puanına katkı yapar; hat-trick anonsu
 - Santra kuralları, **altın gol**, gol limiti, süre seçimi
 - 3 zorlukta **botlar** (kaleci, top kovalayan, destek rolleri) boş yerleri doldurur
@@ -41,6 +48,8 @@ oyuncular forma desenli pullar olarak görünür.
 - 10 forma seti (çizgili, yatay çizgili, kuşaklı, yarım), takma ad + forma numarası
 - Ses dosyası olmadan WebAudio ile sentezlenen sesler: vuruş ve dokunuş, direk, file, düdük; top kaleye yaklaştıkça yükselen, kıl payı kaçan şutta "ooh" diyen tribün
 - Emote'lar, oyun içi sohbet, skor tablosu (Tab), mini harita, kamera modları (otomatik / tüm saha / takip), kamera açısı ayarı
+- Güçlendirme çipleri ikon, kalan saniye ve süre çubuğuyla; bitmeye yakın yanıp söner. Oyuncunun üstünde yüzen yazılar (+HIZ, SERSEM!, KURTARIŞ!, KAPTI!), takip kamerasında ekran dışındaki rozetleri gösteren oklar, mini haritada rozet ve kalkanlar
+- **Akıcılık:** otomatik grafik kalitesi (kare hızı düşerse kendiliğinden bir kademe düşer), takip kamerası koştuğun yöne hafifçe önden bakar
 - Klavye (WASD veya ok tuşları), **gamepad**, **mobil dokunmatik joystick + tek VUR tuşu** (saydamlık ve boyut ayarlı)
 - Oda kodu ve **davet linki** (`?oda=KOD`), açık oda listesi, hızlı maç, sunucusuz **antrenman** modu
 - Oda lobisinde ve maç menüsünde **Profilim**: takma ad ve forma numarası her an değiştirilebilir

@@ -11,15 +11,15 @@ const upper = (s) => String(s).toLocaleUpperCase('tr');
 // Help screen: every pickup (and the curses hidden in the surprise box).
 const PU_HELP = [PU.FIRE, PU.GIANT, PU.SPEED, PU.MAGNET, PU.GHOST, PU.SHIELD, PU.ICE, PU.SHOCK, PU.RUBBER, PU.MYSTERY, PU.DIZZY, PU.SLIPPY];
 const PU_HELP_TEXT = {
-  [PU.FIRE]: 'Sonraki vuruşun alev alır, çok sert gider; çarptığı oyuncuyu savurup sersemletir.',
-  [PU.GIANT]: '8 sn kocaman ve ağır olursun: rakipleri itersin, kaleyi kapatırsın.',
-  [PU.SPEED]: '6 sn çok daha hızlı koşar, daha çabuk ivmelenirsin.',
-  [PU.MAGNET]: '7 sn top ayağına yapışır, yakındaki yavaş topları kendine çeker.',
-  [PU.GHOST]: '6 sn oyuncuların içinden geçersin; şok ve ateş topu sana işlemez.',
+  [PU.FIRE]: 'Vuruş şarjı (10 sn): sonraki vuruşun alev alır, çok sert gider ve önündeki ilk rakibi delip geçer, onu savurup sersemletir.',
+  [PU.GIANT]: '9 sn kocaman ve ağır olursun: rakipleri itersin, vuruşların sertleşir, kaleyi kapatırsın.',
+  [PU.SPEED]: '8 sn çok daha hızlı koşar, daha çabuk ivmelenirsin.',
+  [PU.MAGNET]: '9 sn top ayağına yapışır ve önüne döner; yakındaki yavaş topu, uzun pasları kendine çeker.',
+  [PU.GHOST]: '7 sn oyuncuların içinden geçersin; ayağındaki top da rakiplere çarpmaz, sadece vurarak alabilirler. Şok ve ateş işlemez.',
   [PU.SHIELD]: 'Kalenin önünde enerji perdesi: ilk şutu geri çevirir (12 sn).',
   [PU.ICE]: 'Rakip takımın tamamı 4 sn yavaşlar.',
-  [PU.SHOCK]: 'Anında patlar: yakındaki rakipleri savurur ve kısa süre sersemletir.',
-  [PU.RUBBER]: 'Top 10 sn bantlardan ve oyunculardan hız kaybetmeden seker.',
+  [PU.SHOCK]: 'Vuruş şarjı (10 sn): sonraki vuruşunda etrafına şok dalgası yayılır, yakındaki rakipler savrulup sersemler.',
+  [PU.RUBBER]: '10 sn top sizin takımınızın: bantlardan hız kaybetmeden seker, vuruşlarınız sertleşir, rakip topu ayağında tutamaz.',
   [PU.MYSTERY]: 'İçinden rastgele bir güçlendirme çıkar… ya da bir lanet!',
   [PU.DIZZY]: 'Lanet: 3.5 sn kontrollerin ters döner.',
   [PU.SLIPPY]: 'Lanet: 4.5 sn ayakların buzda gibi kayar.',
@@ -166,7 +166,7 @@ export class Modals {
         el('div', { class: 'toggle-row' }, el('span', { text: 'Sesi kapat' }), toggle(p.muted, (v) => app.setMuted(v))),
         row('Kamera', seg([{ v: 'auto', label: 'Otomatik' }, { v: 'full', label: 'Tüm saha' }, { v: 'follow', label: 'Takip' }], p.camera, (v) => app.setPref('camera', v))),
         row('Kamera açısı (sol: eğik · sağ: tam üstten)', tilt),
-        row('Grafik kalitesi', seg([{ v: 'high', label: 'Yüksek' }, { v: 'medium', label: 'Orta' }, { v: 'low', label: 'Düşük' }], p.quality, (v) => app.setPref('quality', v))),
+        row('Grafik kalitesi', seg([{ v: 'auto', label: 'Otomatik' }, { v: 'high', label: 'Yüksek' }, { v: 'medium', label: 'Orta' }, { v: 'low', label: 'Düşük' }], p.quality, (v) => app.setPref('quality', v))),
         el('div', { class: 'toggle-row' }, el('span', { text: 'Gol tekrarlarını göster' }), toggle(p.replays, (v) => app.setPref('replays', v))),
         ...touchRows),
     });
@@ -213,7 +213,7 @@ export class Modals {
         </div>
         <div class="help-section">
           <h3>Güçlendirmeler</h3>
-          <p class="muted small" style="margin:0 0 8px">Maç sırasında sahada parlayan rozetler belirir, üstünden geçen kapar. Sıklığı oda ayarlarından seçilir (Kapalı / Az / Normal / Kaos).</p>
+          <p class="muted small" style="margin:0 0 8px">Maç sırasında sahada parlayan rozetler belirir, üstünden geçen kapar. Sıklığı oda ayarlarından seçilir (Kapalı / Az / Normal / Kaos). Yeri bir saniye önceden halka ile işaretlenir. <b>Ateş Topu</b> ve <b>Şok Vuruşu</b> vuruş şarjıdır: diğer güçlendirmelerle birlikte taşınır, biri diğerinin yerini alır.</p>
           <div class="pu-help">${PU_HELP.map((k) => `<div class="pu-help-item" style="--pc:${PU_INFO[k].color}"><b>${esc(PU_INFO[k].name)}</b><span>${esc(PU_HELP_TEXT[k])}</span></div>`).join('')}</div>
         </div>`,
     });
