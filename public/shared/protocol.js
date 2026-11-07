@@ -24,7 +24,7 @@ export function encodeSnapshot(s, events) {
       r2(p.x), r2(p.y), r3(p.vx), r3(p.vy), r3(p.facing),
       p.ct, p.pb, p.kcd,
       r2(p.in.mx), r2(p.in.my), r3(p.in.a), p.in.b,
-      p.eff, p.et, p.sl, p.st, p.db, p.dt, p.fb, p.cg,
+      p.eff, p.et, p.sl, p.st, p.db, p.dt, p.fb, p.cg, p.pos, p.ai,
     ]),
     events || [],
     s.pu.map((u) => [u.id, u.k, u.x, u.y, u.t, u.m || 0]),
@@ -77,6 +77,8 @@ export function decodeSnapshot(d, base) {
     dt: a[20] || 0,
     fb: a[21] || 0,
     cg: a[22] || 0,
+    pos: a[23] ?? -1,
+    ai: a[24] || 0,
   }));
   return {
     tick: d[0],

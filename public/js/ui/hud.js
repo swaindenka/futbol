@@ -94,7 +94,10 @@ export class Hud {
     this.set('cd', cd, (v) => {
       if (v > 0 && v <= 3) {
         const kit = session.kits[s.ko];
-        this.countdownEl.innerHTML = `<span>${v}</span><small style="--k:${kit.primary}">${esc(kit.name)} başlıyor</small>`;
+        // Who takes this kickoff (it rotates between the team's players after goals).
+        const taker = s.players.find((p) => p.team === s.ko && p.pos === 0);
+        const who = taker ? (taker.id === session.myId ? 'santra sende' : `santra: ${session.name(taker.id)}`) : '';
+        this.countdownEl.innerHTML = `<span>${v}</span><small style="--k:${kit.primary}">${esc(kit.name)} başlıyor${who ? ` · ${esc(who)}` : ''}</small>`;
       } else this.countdownEl.innerHTML = '';
     });
 

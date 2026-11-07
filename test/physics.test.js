@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  makeState, addPlayer, resetKickoff, step, findPlayer, radius,
+  makeState, addPlayer, removePlayer, resetKickoff, step, findPlayer, radius,
 } from '../public/shared/physics.js';
 import { encodeSnapshot, decodeSnapshot } from '../public/shared/protocol.js';
 import { BotBrain } from '../public/shared/bot.js';
@@ -267,7 +267,7 @@ test('bots play a full 4v4 match without errors and score', () => {
   let id = 1;
   for (let t = 0; t < 2; t++) {
     for (let i = 0; i < 4; i++) {
-      addPlayer(s, id, t);
+      addPlayer(s, id, t, undefined, true);
       brains.set(id, new BotBrain(id, 2));
       stats.ensure({ id, name: `b${id}`, team: t, number: id });
       id++;
@@ -300,7 +300,7 @@ test('bots move smoothly (no constant direction reversals)', () => {
     let id = 1;
     for (let t = 0; t < 2; t++) {
       for (let i = 0; i < size; i++) {
-        addPlayer(s, id, t);
+        addPlayer(s, id, t, undefined, true);
         brains.set(id, new BotBrain(id, 1));
         id++;
       }
@@ -342,7 +342,7 @@ test('2v2: a straight shot right after the kickoff is not a free goal', () => {
         let id = 1;
         for (let t = 0; t < 2; t++) {
           for (let i = 0; i < 2; i++) {
-            addPlayer(s, id, t);
+            addPlayer(s, id, t, undefined, id !== 1);
             if (id !== 1) brains.set(id, new BotBrain(id, level));
             id++;
           }
@@ -857,7 +857,7 @@ test('bots play a chaos power-up 4v4 match without errors', () => {
   let id = 1;
   for (let t = 0; t < 2; t++) {
     for (let i = 0; i < 4; i++) {
-      addPlayer(s, id, t, i);
+      addPlayer(s, id, t, i, true);
       brains.set(id, new BotBrain(id, i % 3));
       id++;
     }
@@ -1049,4 +1049,103 @@ test('snapshot carries kick charges and the rubber team', () => {
   const r = decodeSnapshot(d, { field: 'small', rules: s.rules });
   const q = r.players.find((x) => x.id === 1);
   assert.deepEqual([q.cg, q.fb, r.ball.rt], [PU.SHOCK, 77, 1]);
+});
+
+// ---------------------------------------------------------------------------
+// Fair positions: nobody is always in the middle or at the back
+
+/** Puts the ball into `team`'s target goal and runs until the next kickoff countdown. */
+function scoreFor(s, team) {
+  s.phase = PHASE.PLAY;
+  for (const p of s.players) {
+    p.x = team === 0 ? -200 : 200;
+    p.y = (p.slot - 2) * 60;
+  }
+  const side = team === 0 ? 1 : -1;
+  s.ball.x = side * (s.field.hw - 4);
+  s.ball.y = 0;
+  s.ball.vx = side * 6;
+  s.ball.vy = 0;
+  const ev = run(s, 4);
+  assert.ok(ev.some((e) => e.e === 'goal' && e.t === team), 'goal');
+  for (let i = 0; i < 400 && s.phase !== PHASE.COUNTDOWN; i++) step(s, true);
+  assert.equal(s.phase, PHASE.COUNTDOWN);
+}
+
+function teamSetup(humans, bots) {
+  const s = makeState('medium', { ...rules, duration: 600, powerups: 0, goldenGoal: false });
+  let id = 1;
+  for (let t = 0; t < 2; t++) {
+    for (let i = 0; i < humans; i++) addPlayer(s, id++, t);
+    for (let i = 0; i < bots; i++) addPlayer(s, id++, t, undefined, true);
+  }
+  resetKickoff(s);
+  return s;
+}
+
+const centre = (s, team) => s.players.find((p) => p.team === team && p.pos === 0);
+
+test('positions rotate between the human players after every goal', () => {
+  const s = teamSetup(3, 0);
+  const seen = new Map(s.players.filter((p) => p.team === 0).map((p) => [p.id, new Set([p.pos])]));
+  for (let g = 0; g < 6; g++) {
+    scoreFor(s, g % 3 === 0 ? 1 : 0);
+    for (const p of s.players) if (p.team === 0) seen.get(p.id).add(p.pos);
+    const red = s.players.filter((p) => p.team === 0).map((p) => p.pos).sort();
+    assert.deepEqual(red, [0, 1, 2], 'every position is taken exactly once');
+  }
+  for (const [id, set] of seen) assert.equal(set.size, 3, `player ${id} played every position (${[...set]})`);
+});
+
+test('kickoffs are shared fairly even when goals alternate', () => {
+  const s = teamSetup(2, 0);
+  const taken = new Map();
+  const note = () => {
+    const c = centre(s, s.ko);
+    if (c.team === 0) taken.set(c.id, (taken.get(c.id) || 0) + 1);
+  };
+  note();
+  // Red concedes, then scores, again and again: the pattern that used to give one player
+  // every kickoff of his team.
+  for (let g = 0; g < 12; g++) {
+    scoreFor(s, g % 2 === 0 ? 1 : 0);
+    note();
+  }
+  const counts = [...taken.values()];
+  assert.equal(counts.length, 2, 'both red players took kickoffs');
+  assert.ok(Math.abs(counts[0] - counts[1]) <= 1, `kickoffs ${counts}`);
+});
+
+test('a lone human keeps the centre; bots hold the positions behind, a bot keeps goal', () => {
+  const s = teamSetup(1, 2);
+  for (let g = 0; g < 4; g++) {
+    const me = s.players.find((p) => p.team === 0 && !p.ai);
+    assert.equal(me.pos, 0);
+    const last = s.players.find((p) => p.team === 0 && p.pos === 2);
+    assert.equal(last.ai, 1, 'deepest is a bot');
+    const brain = new BotBrain(last.id, 1);
+    assert.ok(brain.context(s, last).isKeeper, 'and that bot is the keeper');
+    scoreFor(s, g % 2);
+  }
+});
+
+test('a human taking a bot\'s slot mid-match does not become the keeper', () => {
+  const s = teamSetup(0, 3);
+  const keeper = s.players.find((p) => p.team === 0 && p.pos === 2);
+  removePlayer(s, keeper.id);
+  const h = addPlayer(s, 99, 0, keeper.slot);
+  assert.equal(h.pos, 0, 'the human is put in front');
+  const deep = s.players.find((p) => p.team === 0 && p.pos === 2);
+  assert.equal(deep.ai, 1);
+  assert.ok(new BotBrain(deep.id, 1).context(s, deep).isKeeper);
+});
+
+test('snapshot carries formation positions and the bot flag', () => {
+  const s = teamSetup(1, 1);
+  const d = JSON.parse(JSON.stringify(encodeSnapshot(s, [])));
+  const r = decodeSnapshot(d, { field: 'medium', rules: s.rules });
+  for (const p of s.players) {
+    const q = r.players.find((x) => x.id === p.id);
+    assert.deepEqual([q.pos, q.ai], [p.pos, p.ai]);
+  }
 });

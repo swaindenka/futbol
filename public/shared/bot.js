@@ -7,7 +7,7 @@ import {
   P, B, AT, BTN, PHASE, PU, PU_INFO, PU_TUNE,
 } from './constants.js';
 import {
-  teamPlayers, findPlayer, formationSpot, radius, PHYS,
+  teamOrder, findPlayer, formationSpot, radius, PHYS,
 } from './physics.js';
 import { clamp, distToSegment, angleDiff, lerp } from './util.js';
 
@@ -136,7 +136,8 @@ export class BotBrain {
     const f = s.field;
     const b = s.ball;
     const dir = me.team === 0 ? 1 : -1;
-    const mates = teamPlayers(s, me.team);
+    // Formation order: the deepest player is the keeper (a bot whenever the team has one).
+    const mates = teamOrder(s, me.team);
     const opps = s.players.filter((p) => p.team !== me.team);
     const n = mates.length;
     const keeperP = n >= 3 ? mates[n - 1] : null;

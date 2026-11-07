@@ -122,7 +122,7 @@ export class Match {
     let number = 2 + Math.floor(Math.random() * 20);
     while (used.has(number)) number++;
     const name = this.botNames[this.botNameIdx++ % this.botNames.length];
-    const p = addPlayer(this.state, id, team, slot);
+    const p = addPlayer(this.state, id, team, slot, true);
     this.bots.set(id, new BotBrain(id, this.settings.botLevel));
     const meta = { id, name, number, team, bot: true };
     this.meta.set(id, meta);

@@ -37,6 +37,7 @@ oyuncular forma desenli pullar olarak görünür.
 - Botlar güçlendirmeleri bilerek kullanır: güçlendirmesi olan bot topa gider, ateş topuyla uzaktan ve defansın içinden vurur, şok vuruşunu kalabalıkta patlatır, mıknatısla topu doğrudan kaleye taşır, hayaletle pas yerine top sürer, ters kontrole bir süre sonra alışır
 - **Kurtarış** (kaleye giden şutu gövdeyle kesmek) ve **top kapma** (rakibin ayağındaki topu çalmak) ayrı istatistik, oyuncu puanına katkı yapar; hat-trick anonsu
 - Santra kuralları, **altın gol**, gol limiti, süre seçimi
+- **Adil pozisyonlar:** her golden sonra (atılan ya da yenen) insan oyuncular dizilişte yer değiştirir, kimse hep ortada ya da hep geride kalmaz; santrayı o ana kadar en az santra kullanan oyuncu yapar (geri sayımda yazar). Botlar arkadaki pozisyonları alır, takımda bot varsa kaleci hep bottur
 - 3 zorlukta **botlar** (kaleci, top kovalayan, destek rolleri) boş yerleri doldurur
 - Maç sonu istatistikleri: gol, asist, şut, kurtarış, top kapma, topa sahip olma, oyuncu puanı ve **MVP**
 

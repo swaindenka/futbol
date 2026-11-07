@@ -107,7 +107,7 @@ export class Session {
       for (let i = 0; i < n; i++) {
         const isMe = !demo && team === 0 && i === 0;
         const pid = id++;
-        addPlayer(this.state, pid, team, i);
+        addPlayer(this.state, pid, team, i, !isMe);
         const meta = isMe
           ? { id: pid, name: this.app.prefs.name, number: this.app.prefs.number, team, bot: false }
           : { id: pid, name: names[ni++ % names.length], number: [1, 4, 7, 9, 10, 11, 8, 6][(i + team * 3) % 8], team, bot: true };
