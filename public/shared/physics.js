@@ -71,6 +71,9 @@ export function makePlayer(id, team, slot) {
     st: 0, // dazed (no control) ticks left
     db: 0, // curse (PU.DIZZY / PU.SLIPPY) and ticks left
     dt: 0,
+    pos: -1, // place in the team's formation (0 = centre / kickoff taker), set at kickoffs
+    ai: 0, // 1 for bots: humans get the front positions and rotate through them
+    kc: 0, // kickoffs taken (the human with the fewest takes the next one)
     cg: 0, // kick charge (PU.FIRE / PU.SHOCK) released by the next kick; stacks with `eff`
     fb: 0, // ticks left to use the charge
     in: makeInput(team),
@@ -105,6 +108,7 @@ export function makeState(fieldKey, settings) {
     puId: 1,
     puT: pu ? PU_RATES[pu].first : PU_TUNE.FIRST,
     sh: [0, 0], // shield ticks left on each team's goal
+    rot: [0, 0], // per team: how far the humans' positions are rotated (changes after goals)
   };
 }
 
@@ -126,8 +130,44 @@ function mass(p) {
 
 const ghost = (p) => p.eff === PU.GHOST;
 
+const bySlot = (a, b) => a.slot - b.slot;
+
 export function teamPlayers(s, team) {
-  return s.players.filter((p) => p.team === team).sort((a, b) => a.slot - b.slot);
+  return s.players.filter((p) => p.team === team).sort(bySlot);
+}
+
+/** A team's players in formation order: centre / kickoff taker first, deepest last. */
+export function teamOrder(s, team) {
+  return s.players.filter((p) => p.team === team).sort((a, b) => a.pos - b.pos || a.slot - b.slot);
+}
+
+/**
+ * Formation positions for one team. Humans take the front positions and rotate through them
+ * after every goal (scored or conceded), so nobody is always the one in the middle or at the
+ * back; at the team's kickoff the human with the fewest kickoffs takes it. Bots fill the
+ * remaining positions in slot order, so whenever a team has bots, a bot is the deepest player
+ * (the keeper). `kickoff` = new kickoff: recompute the rotation; otherwise keep it (joins/leaves).
+ */
+function orderTeam(s, team, kickoff) {
+  const mine = s.players.filter((p) => p.team === team);
+  const humans = mine.filter((p) => !p.ai).sort(bySlot);
+  const bots = mine.filter((p) => p.ai).sort(bySlot);
+  const h = humans.length;
+  if (kickoff && h) {
+    let off = s.score[0] + s.score[1];
+    if (team === s.ko && h > 1) {
+      let best = 0;
+      for (let j = 1; j < h; j++) if (humans[(off + j) % h].kc < humans[(off + best) % h].kc) best = j;
+      off += best;
+    }
+    s.rot[team] = off;
+  }
+  const off = h ? s.rot[team] % h : 0;
+  const order = [];
+  for (let j = 0; j < h; j++) order.push(humans[(off + j) % h]);
+  for (const b of bots) order.push(b);
+  for (let i = 0; i < order.length; i++) order[i].pos = i;
+  if (kickoff && team === s.ko && order.length) order[0].kc++;
 }
 
 // Formation spots as fractions of half-width / half-height, for the left (red) team.
@@ -139,7 +179,7 @@ const FORMATIONS = {
 };
 
 export function formationSpot(s, p, kickoff) {
-  const list = teamPlayers(s, p.team);
+  const list = teamOrder(s, p.team);
   const n = clamp(list.length, 1, 4);
   const i = clamp(list.indexOf(p), 0, n - 1);
   const [fx, fy] = FORMATIONS[n][i];
@@ -157,10 +197,15 @@ function freeSlot(s, team) {
   return used.size;
 }
 
-export function addPlayer(s, id, team, slot) {
+/**
+ * @param {boolean} [ai] a bot: bots take the positions behind the human players
+ */
+export function addPlayer(s, id, team, slot, ai = false) {
   const p = makePlayer(id, team, slot ?? freeSlot(s, team));
+  p.ai = ai ? 1 : 0;
   s.players.push(p);
   s.players.sort((a, b) => a.id - b.id);
+  orderTeam(s, team, false);
   const kickoff = s.phase === PHASE.COUNTDOWN || s.phase === PHASE.KICKOFF;
   const spot = formationSpot(s, p, kickoff);
   p.x = spot.x;
@@ -172,6 +217,7 @@ export function removePlayer(s, id) {
   const i = s.players.findIndex((p) => p.id === id);
   if (i < 0) return null;
   const [p] = s.players.splice(i, 1);
+  orderTeam(s, p.team, false);
   const b = s.ball;
   if (b.owner === id) b.owner = -1;
   if (b.last === id) b.last = -1;
@@ -184,6 +230,8 @@ export function removePlayer(s, id) {
 }
 
 export function resetKickoff(s) {
+  orderTeam(s, 0, true);
+  orderTeam(s, 1, true);
   for (const p of s.players) {
     const spot = formationSpot(s, p, true);
     p.x = spot.x;
